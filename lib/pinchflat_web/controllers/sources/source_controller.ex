@@ -3,12 +3,14 @@ defmodule PinchflatWeb.Sources.SourceController do
   use Pinchflat.Sources.SourcesQuery
 
   alias Pinchflat.Repo
+  alias Pinchflat.Media
   alias Pinchflat.Tasks
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
+  alias Pinchflat.Downloading.RetentionPolicy
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
@@ -63,6 +65,23 @@ defmodule PinchflatWeb.Sources.SourceController do
           layout: get_onboarding_layout()
         )
     end
+  end
+
+  # Returns a JSON summary of what the given (unsaved) retention budget would do to
+  # this source's downloaded media. Powers the live preview on the source form.
+  def retention_preview(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+
+    preview_source = %{
+      source
+      | keep_count: parse_optional_integer(params["keep_count"]),
+        keep_bytes: parse_keep_bytes(params["keep_gigabytes"]),
+        eviction_strategy: parse_eviction_strategy(params["eviction_strategy"], source.eviction_strategy)
+    }
+
+    summary = RetentionPolicy.summarize(preview_source, Media.list_downloaded_media_items_for(source))
+
+    json(conn, summary)
   end
 
   def show(conn, %{"id" => id}) do
@@ -187,24 +206,39 @@ defmodule PinchflatWeb.Sources.SourceController do
   # Convert and drop the virtual param before it reaches the changeset. An empty
   # value clears the budget (nil); a missing key leaves it untouched.
   defp keep_bytes_from_params(%{"keep_gigabytes" => gigabytes} = params) do
-    keep_bytes =
-      case String.trim(to_string(gigabytes)) do
-        "" ->
-          nil
-
-        value ->
-          case Float.parse(value) do
-            {gb, _rest} -> round(gb * 1_000_000_000)
-            :error -> nil
-          end
-      end
-
     params
-    |> Map.put("keep_bytes", keep_bytes)
+    |> Map.put("keep_bytes", parse_keep_bytes(gigabytes))
     |> Map.delete("keep_gigabytes")
   end
 
   defp keep_bytes_from_params(params), do: params
+
+  defp parse_keep_bytes(gigabytes) do
+    case String.trim(to_string(gigabytes)) do
+      "" ->
+        nil
+
+      value ->
+        case Float.parse(value) do
+          {gb, _rest} -> round(gb * 1_000_000_000)
+          :error -> nil
+        end
+    end
+  end
+
+  defp parse_optional_integer(value) do
+    case Integer.parse(String.trim(to_string(value))) do
+      {int, _rest} -> int
+      :error -> nil
+    end
+  end
+
+  defp parse_eviction_strategy(value, fallback) do
+    case to_string(value) do
+      v when v in ~w(oldest newest shortest longest) -> String.to_existing_atom(v)
+      _ -> fallback
+    end
+  end
 
   defp get_onboarding_layout do
     if Settings.get!(:onboarding) do

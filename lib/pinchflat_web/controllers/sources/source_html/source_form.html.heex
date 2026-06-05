@@ -147,7 +147,46 @@
       html_help={true}
     />
 
-    <section x-show="advancedMode">
+    <% preview_url = if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/retention_preview", else: "" %>
+    <section
+      x-show="advancedMode"
+      x-data={
+        """
+        {
+          url: '#{preview_url}',
+          loaded: false,
+          error: false,
+          summary: '',
+          async refresh() {
+            if (!this.url) return;
+            const q = new URLSearchParams({
+              keep_count: document.getElementById('source_keep_count')?.value || '',
+              keep_gigabytes: document.getElementById('source_keep_gigabytes')?.value || '',
+              eviction_strategy: document.getElementById('source_eviction_strategy')?.value || ''
+            });
+            try {
+              const res = await fetch(this.url + '?' + q.toString(), { headers: { accept: 'application/json' } });
+              if (!res.ok) { this.error = true; this.loaded = true; return; }
+              const d = await res.json();
+              this.error = false;
+              if (d.total === 0) {
+                this.summary = 'No downloaded media for this source yet';
+              } else if (d.evict === 0) {
+                this.summary = 'Within budget - keeping all ' + d.total + ' downloaded items';
+              } else {
+                const gb = (d.bytes_to_free / 1000000000).toFixed(1);
+                this.summary = 'Would keep ' + d.keep + ' of ' + d.total + ', evict ' + d.evict + ' (~' + gb + ' GB freed)';
+              }
+              this.loaded = true;
+            } catch (e) { this.error = true; this.loaded = true; }
+          }
+        }
+        """
+      }
+      x-init="refresh()"
+      x-on:input.debounce.400ms="refresh()"
+      x-on:change="refresh()"
+    >
       <.input
         field={f[:keep_count]}
         type="number"
@@ -183,6 +222,15 @@
         max="100"
         help="Skip budget eviction for this source if a single run would evict more than this percent of its downloaded media. Leave blank to disable the guard"
       />
+
+      <div
+        x-show="loaded"
+        x-cloak
+        class="mt-2 rounded-md border border-stroke px-4 py-3 text-sm font-medium dark:border-strokedark dark:bg-meta-4"
+      >
+        <span x-show="!error" x-text="summary"></span>
+        <span x-show="error" class="text-meta-1">Couldn't compute retention preview</span>
+      </div>
     </section>
 
     <section x-show="advancedMode">

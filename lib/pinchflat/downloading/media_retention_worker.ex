@@ -89,7 +89,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
   defp cull_over_budget_media_items do
     sources_with_budget()
     |> Enum.each(fn source ->
-      downloaded = downloaded_media_for(source)
+      downloaded = Media.list_downloaded_media_items_for(source)
       candidates = RetentionPolicy.eviction_candidates(source, downloaded)
 
       if within_delete_guard?(source, candidates, downloaded) do
@@ -112,12 +112,6 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
 
   defp sources_with_budget do
     Repo.all(from s in Source, where: not is_nil(s.keep_count) or not is_nil(s.keep_bytes))
-  end
-
-  defp downloaded_media_for(source) do
-    MediaQuery.new()
-    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.downloaded()))
-    |> Repo.all()
   end
 
   defp within_delete_guard?(%Source{max_delete_percent: nil}, _candidates, _downloaded), do: true

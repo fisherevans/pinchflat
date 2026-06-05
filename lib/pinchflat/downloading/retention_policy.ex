@@ -49,6 +49,24 @@ defmodule Pinchflat.Downloading.RetentionPolicy do
     |> Enum.reverse()
   end
 
+  @doc """
+  Summarizes what a budget would do to a source's downloaded media, for previewing
+  before saving. Returns a map with total downloaded count, how many would be kept
+  vs evicted, and the bytes that eviction would free.
+  """
+  def summarize(%Source{} = source, media_items) do
+    candidates = eviction_candidates(source, media_items)
+    total = Enum.count(media_items, &downloaded?/1)
+    evict = length(candidates)
+
+    %{
+      total: total,
+      keep: total - evict,
+      evict: evict,
+      bytes_to_free: candidates |> Enum.map(&size_bytes/1) |> Enum.sum()
+    }
+  end
+
   defp over_count?(nil, _index), do: false
   defp over_count?(keep_count, index), do: index >= keep_count
 

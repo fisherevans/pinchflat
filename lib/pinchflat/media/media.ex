@@ -67,6 +67,18 @@ defmodule Pinchflat.Media do
   end
 
   @doc """
+  Returns the downloaded media_items for a source (those with a media_filepath).
+  Used by retention budgeting and its preview.
+
+  Returns [%MediaItem{}, ...].
+  """
+  def list_downloaded_media_items_for(%Source{} = source) do
+    MediaQuery.new()
+    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.downloaded()))
+    |> Repo.all()
+  end
+
+  @doc """
   For a given media_item, tells you if it is pending download. This is defined as
   the media_item satisfying `MediaQuery.pending` which you should really check out.
 

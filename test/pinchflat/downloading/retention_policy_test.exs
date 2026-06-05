@@ -123,6 +123,31 @@ defmodule Pinchflat.Downloading.RetentionPolicyTest do
     end
   end
 
+  describe "summarize/2" do
+    test "reports everything kept when no budget is set" do
+      summary = RetentionPolicy.summarize(source(%{}), sample_items())
+      assert summary == %{total: 5, keep: 5, evict: 0, bytes_to_free: 0}
+    end
+
+    test "reports keep/evict counts and bytes freed for a budget" do
+      src = source(%{keep_count: 2, eviction_strategy: :oldest})
+      summary = RetentionPolicy.summarize(src, sample_items())
+
+      # 5 total, keep 2, evict 3 at 50 bytes each
+      assert summary == %{total: 5, keep: 2, evict: 3, bytes_to_free: 150}
+    end
+
+    test "counts pinned items as kept" do
+      items = List.update_at(sample_items(), 0, &%{&1 | prevent_culling: true})
+      src = source(%{keep_count: 0, eviction_strategy: :oldest})
+      summary = RetentionPolicy.summarize(src, items)
+
+      assert summary.total == 5
+      assert summary.keep == 1
+      assert summary.evict == 4
+    end
+  end
+
   describe "eviction_candidates/2 - nil handling" do
     test "treats nil size as zero bytes" do
       items = [

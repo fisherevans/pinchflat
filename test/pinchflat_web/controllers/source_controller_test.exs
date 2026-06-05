@@ -252,6 +252,24 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "retention_preview" do
+    test "returns a JSON summary of what a budget would evict", %{conn: conn} do
+      source = source_fixture()
+      for _ <- 1..3, do: media_item_with_attachments(%{source_id: source.id})
+
+      conn = get(conn, ~p"/sources/#{source.id}/retention_preview?keep_count=1")
+      assert %{"total" => 3, "keep" => 1, "evict" => 2} = json_response(conn, 200)
+    end
+
+    test "reports all kept when within budget", %{conn: conn} do
+      source = source_fixture()
+      media_item_with_attachments(%{source_id: source.id})
+
+      conn = get(conn, ~p"/sources/#{source.id}/retention_preview?keep_count=5")
+      assert %{"total" => 1, "keep" => 1, "evict" => 0} = json_response(conn, 200)
+    end
+  end
+
   describe "force_metadata_refresh" do
     test "forces a metadata refresh", %{conn: conn} do
       source = source_fixture()
