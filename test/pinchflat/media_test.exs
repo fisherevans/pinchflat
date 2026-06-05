@@ -335,6 +335,56 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_pending_media_items_for/1 when testing keep_count" do
+    test "only the newest keep_count items are eligible (oldest strategy)" do
+      source = source_fixture(%{keep_count: 2, eviction_strategy: :oldest})
+
+      _old = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(3, :days)})
+      mid = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days)})
+      new = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(1, :day)})
+
+      pending_ids = source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) |> Enum.sort()
+      assert pending_ids == Enum.sort([mid.id, new.id])
+    end
+
+    test "applies no count limit when keep_count is nil" do
+      source = source_fixture(%{keep_count: nil})
+
+      a = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(3, :days)})
+      b = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(1, :day)})
+
+      pending_ids = source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) |> Enum.sort()
+      assert pending_ids == Enum.sort([a.id, b.id])
+    end
+
+    test "respects the eviction strategy when choosing which items are eligible" do
+      source = source_fixture(%{keep_count: 1, eviction_strategy: :shortest})
+
+      _short = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 10})
+      long = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 100})
+
+      # shortest strategy keeps the longest, so only the long item is eligible to download
+      assert source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) == [long.id]
+    end
+
+    test "prevented items don't occupy a keep slot" do
+      source = source_fixture(%{keep_count: 1, eviction_strategy: :oldest})
+
+      _prevented =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: now_minus(1, :day),
+          prevent_download: true
+        })
+
+      older = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days)})
+
+      # the newest item is prevented, so it shouldn't consume the single keep slot
+      assert source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) == [older.id]
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing title regex" do
     test "returns only media items that match the title regex" do
       source = source_fixture(%{title_filter_regex: "(?i)^FOO$"})

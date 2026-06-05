@@ -192,7 +192,7 @@
         type="number"
         label="Keep Most Recent (count)"
         min="0"
-        help="Keep at most this many downloaded media items. Older items are evicted when exceeded. Leave blank for no limit"
+        help="Only this many items (chosen by the eviction strategy) are ever downloaded and kept - the rest aren't downloaded at all. Leave blank for no limit"
       />
 
       <.input
@@ -203,7 +203,7 @@
         label="Maximum Total Size (GB)"
         min="0"
         step="0.01"
-        help="Keep at most this many gigabytes of downloaded media. Items are evicted when exceeded. Leave blank for no limit. The most restrictive of count/size wins"
+        help="Keep at most this many gigabytes of downloaded media. Unlike the count limit this only trims after download (file sizes aren't known until then). Most restrictive of count/size wins. Leave blank for no limit"
       />
 
       <.input
@@ -211,7 +211,7 @@
         options={eviction_strategies()}
         type="select"
         label="Eviction Strategy"
-        help="Which media to evict first when a count/size budget is exceeded"
+        help="For the count limit: which items to download and keep. For the size limit: which to evict first when over budget"
       />
 
       <.input

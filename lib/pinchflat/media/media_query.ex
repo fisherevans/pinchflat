@@ -83,6 +83,51 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
+  # When a source has a `keep_count`, only the items the eviction strategy would
+  # keep are eligible to download - so we never download what we'd immediately
+  # evict. An item is eligible if fewer than `keep_count` other non-prevented
+  # items in the same source rank ahead of it under the strategy's ordering
+  # (with id as a stable tiebreaker, matching RetentionPolicy). `keep_bytes` can't
+  # gate downloads since file sizes are unknown until download, so it's retention-only.
+  def within_keep_count_window do
+    dynamic(
+      [mi, source],
+      is_nil(source.keep_count) or
+        fragment(
+          """
+          (
+            SELECT COUNT(*) FROM media_items m2
+            WHERE m2.source_id = ?
+              AND IFNULL(m2.prevent_download, 0) = 0
+              AND (
+                CASE ?
+                  WHEN 'oldest'   THEN (m2.uploaded_at > ?) OR (m2.uploaded_at = ? AND m2.id < ?)
+                  WHEN 'newest'   THEN (m2.uploaded_at < ?) OR (m2.uploaded_at = ? AND m2.id < ?)
+                  WHEN 'shortest' THEN (IFNULL(m2.duration_seconds, 0) > IFNULL(?, 0)) OR (IFNULL(m2.duration_seconds, 0) = IFNULL(?, 0) AND m2.id < ?)
+                  WHEN 'longest'  THEN (IFNULL(m2.duration_seconds, 0) < IFNULL(?, 0)) OR (IFNULL(m2.duration_seconds, 0) = IFNULL(?, 0) AND m2.id < ?)
+                END
+              )
+          ) < ?
+          """,
+          mi.source_id,
+          source.eviction_strategy,
+          mi.uploaded_at,
+          mi.uploaded_at,
+          mi.id,
+          mi.uploaded_at,
+          mi.uploaded_at,
+          mi.id,
+          mi.duration_seconds,
+          mi.duration_seconds,
+          mi.id,
+          mi.duration_seconds,
+          mi.duration_seconds,
+          mi.id,
+          source.keep_count
+        )
+    )
+  end
+
   def past_retention_period do
     dynamic(
       [mi, source],
@@ -132,7 +177,8 @@ defmodule Pinchflat.Media.MediaQuery do
         ^upload_date_after_source_cutoff() and
         ^format_matching_profile_preference() and
         ^matches_source_title_regex() and
-        ^meets_min_and_max_duration()
+        ^meets_min_and_max_duration() and
+        ^within_keep_count_window()
     )
   end
 
