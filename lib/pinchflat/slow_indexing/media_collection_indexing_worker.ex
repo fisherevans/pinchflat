@@ -75,25 +75,28 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"id" => source_id} = args}) do
     source = Sources.get_source!(source_id)
+    # `download` defaults to true so existing/scheduled jobs behave as before. A metadata-only
+    # reindex passes `download: false` to refresh the collection without enqueueing downloads.
+    enqueue_downloads = Map.get(args, "download", true)
 
     case {source.index_frequency_minutes, source.last_indexed_at} do
       {index_freq, _} when index_freq > 0 ->
         # If the indexing is on a schedule simply run indexing and reschedule
-        perform_indexing_and_notification(source, was_forced: args["force"])
+        perform_indexing_and_notification(source, was_forced: args["force"], enqueue_downloads: enqueue_downloads)
         maybe_enqueue_fast_indexing_task(source)
         reschedule_indexing(source)
 
       {_, nil} ->
         # If the source has never been indexed, index it once
         # even if it's not meant to reschedule
-        perform_indexing_and_notification(source, was_forced: args["force"])
+        perform_indexing_and_notification(source, was_forced: args["force"], enqueue_downloads: enqueue_downloads)
         :ok
 
       _ ->
         # If the source HAS been indexed and is not meant to reschedule,
         # perform a no-op (unless forced)
         if args["force"] do
-          perform_indexing_and_notification(source, was_forced: true)
+          perform_indexing_and_notification(source, was_forced: true, enqueue_downloads: enqueue_downloads)
         end
 
         :ok

@@ -61,6 +61,15 @@
   </:option>
   <:option>
     <.link
+      href={~p"/sources/#{@source}/force_reindex_metadata"}
+      method="post"
+      data-confirm="Reindex the whole collection's metadata without downloading anything? Useful for backfilling metadata on old videos."
+    >
+      Reindex Metadata (no download)
+    </.link>
+  </:option>
+  <:option>
+    <.link
       href={~p"/sources/#{@source}/force_metadata_refresh"}
       method="post"
       data-confirm="Are you sure you want to refresh this source's metadata?"

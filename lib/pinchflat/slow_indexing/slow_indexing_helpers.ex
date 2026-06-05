@@ -87,9 +87,16 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   Available options:
     - `was_forced`: Whether the indexing was forced by the user
 
+  Available options:
+    - `was_forced`: Whether the indexing was forced by the user
+    - `enqueue_downloads`: Whether to enqueue downloads for indexed media (default true).
+      Set to false to refresh/enrich metadata for the whole collection without
+      triggering downloads, even on a source that has `download_media` enabled.
+
   Returns [%MediaItem{} | %Ecto.Changeset{}]
   """
   def index_and_enqueue_download_for_media_items(%Source{} = source, opts \\ []) do
+    enqueue_downloads = Keyword.get(opts, :enqueue_downloads, true)
     # The media_profile is needed to determine the quality options to _then_ determine a more
     # accurate predicted filepath
     source = Repo.preload(source, [:media_profile])
@@ -109,7 +116,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       end)
 
     Sources.update_source(source, %{last_indexed_at: DateTime.utc_now()})
-    DownloadingHelpers.enqueue_pending_download_tasks(source)
+    if enqueue_downloads, do: DownloadingHelpers.enqueue_pending_download_tasks(source)
 
     result
   end
@@ -129,9 +136,10 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # for a sufficiently long time.
   defp setup_file_watcher_and_kickoff_indexing(source, opts) do
     was_forced = Keyword.get(opts, :was_forced, false)
+    enqueue_downloads = Keyword.get(opts, :enqueue_downloads, true)
     {:ok, pid} = FileFollowerServer.start_link()
 
-    handler = fn filepath -> setup_file_follower_watcher(pid, filepath, source) end
+    handler = fn filepath -> setup_file_follower_watcher(pid, filepath, source, enqueue_downloads) end
     should_use_cookies = Sources.use_cookies?(source, :indexing)
 
     command_opts =
@@ -147,14 +155,14 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     result
   end
 
-  defp setup_file_follower_watcher(pid, filepath, source) do
+  defp setup_file_follower_watcher(pid, filepath, source, enqueue_downloads) do
     FileFollowerServer.watch_file(pid, filepath, fn line ->
       case Phoenix.json_library().decode(line) do
         {:ok, media_attrs} ->
           Logger.debug("FileFollowerServer Handler: Got media attributes: #{inspect(media_attrs)}")
 
           media_struct = YtDlpMedia.response_to_struct(media_attrs)
-          create_media_item_and_enqueue_download(source, media_struct)
+          create_media_item_and_enqueue_download(source, media_struct, enqueue_downloads)
 
         err ->
           Logger.debug("FileFollowerServer Handler: Error decoding JSON: #{inspect(err)}")
@@ -164,14 +172,14 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end)
   end
 
-  defp create_media_item_and_enqueue_download(source, media_attrs) do
+  defp create_media_item_and_enqueue_download(source, media_attrs, enqueue_downloads) do
     # Reload because the source may have been updated during the (long-running) indexing process
     # and important settings like `download_media` may have changed.
     source = Repo.reload!(source)
 
     case Media.create_media_item_from_backend_attrs(source, media_attrs) do
       {:ok, %MediaItem{} = media_item} ->
-        DownloadingHelpers.kickoff_download_if_pending(media_item)
+        if enqueue_downloads, do: DownloadingHelpers.kickoff_download_if_pending(media_item), else: media_item
 
       {:error, changeset} ->
         changeset

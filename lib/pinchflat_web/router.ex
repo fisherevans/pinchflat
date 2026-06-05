@@ -55,6 +55,7 @@ defmodule PinchflatWeb.Router do
       post "/force_download_pending", Sources.SourceController, :force_download_pending
       post "/force_redownload", Sources.SourceController, :force_redownload
       post "/force_index", Sources.SourceController, :force_index
+      post "/force_reindex_metadata", Sources.SourceController, :force_reindex_metadata
       post "/force_metadata_refresh", Sources.SourceController, :force_metadata_refresh
       post "/sync_files_on_disk", Sources.SourceController, :sync_files_on_disk
 

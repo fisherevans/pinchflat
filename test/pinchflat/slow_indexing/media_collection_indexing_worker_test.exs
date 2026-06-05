@@ -143,6 +143,17 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
       assert length(all_enqueued(worker: MediaDownloadWorker)) == 4
     end
 
+    test "does not kick off downloads when the download arg is false" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      source = source_fixture(index_frequency_minutes: 10)
+      perform_job(MediaCollectionIndexingWorker, %{id: source.id, force: true, download: false})
+
+      assert [] = all_enqueued(worker: MediaDownloadWorker)
+    end
+
     test "does not kick off a job for media items that could not be saved" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, source_attributes_return_fixture()}

@@ -246,6 +246,16 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       assert [] = Tasks.list_tasks_for(media_item)
     end
 
+    test "does not enqueue downloads when enqueue_downloads is false, even for a downloading source", %{
+      source: source
+    } do
+      _media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source, enqueue_downloads: false)
+
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
     test "doesn't blow up if a media item cannot be coerced into a struct", %{source: source} do
       stub(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         response =

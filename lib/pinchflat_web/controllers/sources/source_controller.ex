@@ -141,6 +141,15 @@ defmodule PinchflatWeb.Sources.SourceController do
     )
   end
 
+  def force_reindex_metadata(conn, %{"source_id" => id}) do
+    wrap_forced_action(
+      conn,
+      id,
+      "Metadata reindex enqueued. This refreshes the whole collection without downloading.",
+      &SlowIndexingHelpers.kickoff_indexing_task(&1, %{force: true, download: false})
+    )
+  end
+
   def force_metadata_refresh(conn, %{"source_id" => id}) do
     wrap_forced_action(
       conn,

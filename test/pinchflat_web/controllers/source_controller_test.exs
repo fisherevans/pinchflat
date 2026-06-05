@@ -235,6 +235,23 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "force_reindex_metadata" do
+    test "enqueues a forced index with downloads disabled", %{conn: conn} do
+      source = source_fixture(index_frequency_minutes: 0, last_indexed_at: DateTime.utc_now())
+
+      post(conn, ~p"/sources/#{source.id}/force_reindex_metadata")
+      assert [job] = all_enqueued(worker: MediaCollectionIndexingWorker)
+      assert job.args == %{"id" => source.id, "force" => true, "download" => false}
+    end
+
+    test "redirects to the source page", %{conn: conn} do
+      source = source_fixture()
+
+      conn = post(conn, ~p"/sources/#{source.id}/force_reindex_metadata")
+      assert redirected_to(conn) == ~p"/sources/#{source.id}"
+    end
+  end
+
   describe "force_metadata_refresh" do
     test "forces a metadata refresh", %{conn: conn} do
       source = source_fixture()
