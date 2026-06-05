@@ -34,6 +34,10 @@ defmodule Pinchflat.Sources.Source do
     original_url
     download_cutoff_date
     retention_period_days
+    keep_count
+    keep_bytes
+    eviction_strategy
+    max_delete_percent
     title_filter_regex
     media_profile_id
     output_path_template_override
@@ -84,6 +88,15 @@ defmodule Pinchflat.Sources.Source do
     # Only download media items that were published after this date
     field :download_cutoff_date, :date
     field :retention_period_days, :integer
+    # Count/size retention budgets. When a source exceeds either budget, downloaded media
+    # is evicted (files deleted, prevent_download set) until it's back under budget. The most
+    # restrictive budget wins. `eviction_strategy` decides which media is evicted first.
+    field :keep_count, :integer
+    field :keep_bytes, :integer
+    field :eviction_strategy, Ecto.Enum, values: [:oldest, :newest, :shortest, :longest], default: :oldest
+    # Safety guard: skip budget eviction for a source if a single run would evict more than
+    # this percentage of its downloaded media. Leave blank to disable the guard.
+    field :max_delete_percent, :integer
     field :original_url, :string
     field :title_filter_regex, :string
     field :output_path_template_override, :string
@@ -127,6 +140,9 @@ defmodule Pinchflat.Sources.Source do
     |> validate_title_regex()
     |> validate_min_and_max_durations()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
+    |> validate_number(:keep_count, greater_than_or_equal_to: 0)
+    |> validate_number(:keep_bytes, greater_than_or_equal_to: 0)
+    |> validate_number(:max_delete_percent, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
     |> validate_format(:original_url, youtube_channel_or_playlist_regex(), message: "must be a channel or playlist URL")

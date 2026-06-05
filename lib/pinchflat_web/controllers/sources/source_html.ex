@@ -35,6 +35,29 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ]
   end
 
+  def eviction_strategies do
+    [
+      {"Oldest first (keep most recent)", :oldest},
+      {"Newest first (keep earliest)", :newest},
+      {"Shortest first (keep longest)", :shortest},
+      {"Longest first (keep shortest)", :longest}
+    ]
+  end
+
+  @doc """
+  Renders a byte count as a gigabytes string for display in the size-budget input.
+  Returns an empty string for a blank budget. Uses GB (1e9), matching how the
+  retention worker compares against `media_size_bytes`.
+  """
+  def gigabytes_from_bytes(nil), do: ""
+  def gigabytes_from_bytes(""), do: ""
+
+  def gigabytes_from_bytes(bytes) when is_integer(bytes) do
+    (bytes / 1_000_000_000)
+    |> Float.round(2)
+    |> Float.to_string()
+  end
+
   def cutoff_date_presets do
     [
       {"7 days", compute_date_offset(7)},

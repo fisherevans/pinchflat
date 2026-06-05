@@ -47,7 +47,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def create(conn, %{"source" => source_params}) do
-    case Sources.create_source(source_params) do
+    case Sources.create_source(keep_bytes_from_params(source_params)) do
       {:ok, source} ->
         redirect_location =
           if Settings.get!(:onboarding), do: ~p"/?onboarding=1", else: ~p"/sources/#{source}"
@@ -86,7 +86,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   def update(conn, %{"id" => id, "source" => source_params}) do
     source = Sources.get_source!(id)
 
-    case Sources.update_source(source, source_params) do
+    case Sources.update_source(source, keep_bytes_from_params(source_params)) do
       {:ok, source} ->
         conn
         |> put_flash(:info, "Source updated successfully.")
@@ -173,6 +173,29 @@ defmodule PinchflatWeb.Sources.SourceController do
     |> order_by(asc: :name)
     |> Repo.all()
   end
+
+  # The size budget is entered in gigabytes for usability but stored as bytes.
+  # Convert and drop the virtual param before it reaches the changeset. An empty
+  # value clears the budget (nil); a missing key leaves it untouched.
+  defp keep_bytes_from_params(%{"keep_gigabytes" => gigabytes} = params) do
+    keep_bytes =
+      case String.trim(to_string(gigabytes)) do
+        "" ->
+          nil
+
+        value ->
+          case Float.parse(value) do
+            {gb, _rest} -> round(gb * 1_000_000_000)
+            :error -> nil
+          end
+      end
+
+    params
+    |> Map.put("keep_bytes", keep_bytes)
+    |> Map.delete("keep_gigabytes")
+  end
+
+  defp keep_bytes_from_params(params), do: params
 
   defp get_onboarding_layout do
     if Settings.get!(:onboarding) do

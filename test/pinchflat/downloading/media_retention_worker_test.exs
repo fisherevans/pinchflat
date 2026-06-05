@@ -190,6 +190,83 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
     end
   end
 
+  describe "perform/1 when testing count/size budget eviction" do
+    test "evicts downloaded media beyond the keep_count budget" do
+      source = source_fixture(%{keep_count: 1})
+      old = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(3, :days)})
+      new = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(1, :day)})
+
+      perform_job(MediaRetentionWorker, %{})
+
+      assert File.exists?(new.media_filepath)
+      refute File.exists?(old.media_filepath)
+      assert Repo.reload!(new).media_filepath
+      refute Repo.reload!(old).media_filepath
+      assert Repo.reload!(old).prevent_download
+      assert Repo.reload!(old).culled_at
+    end
+
+    test "evicts based on the keep_bytes budget" do
+      source = source_fixture(%{keep_bytes: 10})
+      old = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(3, :days), media_size_bytes: 8})
+      new = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(1, :day), media_size_bytes: 8})
+
+      perform_job(MediaRetentionWorker, %{})
+
+      # keeping the newest (8 bytes) fits; adding the older one (16 > 10) doesn't
+      assert File.exists?(new.media_filepath)
+      refute File.exists?(old.media_filepath)
+    end
+
+    test "does nothing when under budget" do
+      source = source_fixture(%{keep_count: 5})
+      old = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(3, :days)})
+      new = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(1, :day)})
+
+      perform_job(MediaRetentionWorker, %{})
+
+      assert File.exists?(old.media_filepath)
+      assert File.exists?(new.media_filepath)
+      refute Repo.reload!(old).culled_at
+    end
+
+    test "respects prevent_culling pins" do
+      source = source_fixture(%{keep_count: 1})
+      old = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(3, :days)})
+      _new = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(1, :day)})
+
+      Media.update_media_item(old, %{prevent_culling: true})
+
+      perform_job(MediaRetentionWorker, %{})
+
+      assert File.exists?(old.media_filepath)
+      refute Repo.reload!(old).culled_at
+    end
+
+    test "skips eviction when it would exceed max_delete_percent" do
+      source = source_fixture(%{keep_count: 0, max_delete_percent: 50})
+      old = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(3, :days)})
+      new = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(1, :day)})
+
+      perform_job(MediaRetentionWorker, %{})
+
+      # keep_count 0 would evict 100% of the library, exceeding the 50% guard
+      assert File.exists?(old.media_filepath)
+      assert File.exists?(new.media_filepath)
+      refute Repo.reload!(old).culled_at
+    end
+
+    test "doesn't touch sources without a budget" do
+      source = source_fixture(%{})
+      media_item = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(3, :days)})
+
+      perform_job(MediaRetentionWorker, %{})
+
+      assert File.exists?(media_item.media_filepath)
+      refute Repo.reload!(media_item).culled_at
+    end
+  end
+
   defp prepare_records_for_retention_date(retention_period_days \\ 2) do
     source = source_fixture(%{retention_period_days: retention_period_days})
 

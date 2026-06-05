@@ -148,6 +148,44 @@
     />
 
     <section x-show="advancedMode">
+      <.input
+        field={f[:keep_count]}
+        type="number"
+        label="Keep Most Recent (count)"
+        min="0"
+        help="Keep at most this many downloaded media items. Older items are evicted when exceeded. Leave blank for no limit"
+      />
+
+      <.input
+        type="number"
+        name="source[keep_gigabytes]"
+        id="source_keep_gigabytes"
+        value={gigabytes_from_bytes(f[:keep_bytes].value)}
+        label="Maximum Total Size (GB)"
+        min="0"
+        step="0.01"
+        help="Keep at most this many gigabytes of downloaded media. Items are evicted when exceeded. Leave blank for no limit. The most restrictive of count/size wins"
+      />
+
+      <.input
+        field={f[:eviction_strategy]}
+        options={eviction_strategies()}
+        type="select"
+        label="Eviction Strategy"
+        help="Which media to evict first when a count/size budget is exceeded"
+      />
+
+      <.input
+        field={f[:max_delete_percent]}
+        type="number"
+        label="Max Delete Percent (safety guard)"
+        min="0"
+        max="100"
+        help="Skip budget eviction for this source if a single run would evict more than this percent of its downloaded media. Leave blank to disable the guard"
+      />
+    </section>
+
+    <section x-show="advancedMode">
       <h3 class="mt-8 text-2xl text-black dark:text-white">
         Advanced Options
       </h3>
