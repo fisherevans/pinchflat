@@ -138,6 +138,19 @@
       </.input>
     </section>
 
+    <section x-show="advancedMode">
+      <.input
+        field={f[:download_end_date]}
+        type="text"
+        label="Download End Date"
+        placeholder="YYYY-MM-DD"
+        maxlength="10"
+        pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
+        title="YYYY-MM-DD"
+        help="Only download media uploaded on or before this date. Pairs with the cutoff date to download a specific date range. Leave blank for no upper bound"
+      />
+    </section>
+
     <.input
       field={f[:retention_period_days]}
       type="number"

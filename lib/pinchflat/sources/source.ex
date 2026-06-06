@@ -33,6 +33,7 @@ defmodule Pinchflat.Sources.Source do
     last_indexed_at
     original_url
     download_cutoff_date
+    download_end_date
     retention_period_days
     keep_count
     keep_bytes
@@ -87,6 +88,8 @@ defmodule Pinchflat.Sources.Source do
     field :last_indexed_at, :utc_datetime
     # Only download media items that were published after this date
     field :download_cutoff_date, :date
+    # Only download media items that were published on or before this date (upper bound)
+    field :download_end_date, :date
     field :retention_period_days, :integer
     # Count/size retention budgets. When a source exceeds either budget, downloaded media
     # is evicted (files deleted, prevent_download set) until it's back under budget. The most

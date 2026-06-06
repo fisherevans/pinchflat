@@ -335,6 +335,39 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_pending_media_items_for/1 when testing download end date" do
+    test "does not return media items uploaded after the end date" do
+      source = source_fixture(%{download_end_date: now_minus(1, :day)})
+
+      old_media_item =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days)})
+
+      _new_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now()})
+
+      assert Media.list_pending_media_items_for(source) == [old_media_item]
+    end
+
+    test "combines with the cutoff date to form a range" do
+      source = source_fixture(%{download_cutoff_date: now_minus(3, :days), download_end_date: now_minus(1, :day)})
+
+      _too_old = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(4, :days)})
+      in_range = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days)})
+      _too_new = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now()})
+
+      assert Media.list_pending_media_items_for(source) == [in_range]
+    end
+
+    test "does not apply an upper bound if there is no end date" do
+      source = source_fixture(%{download_end_date: nil})
+
+      old = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days)})
+      new = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now()})
+
+      pending_ids = source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) |> Enum.sort()
+      assert pending_ids == Enum.sort([old.id, new.id])
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing keep_count" do
     test "only the newest keep_count items are eligible (oldest strategy)" do
       source = source_fixture(%{keep_count: 2, eviction_strategy: :oldest})

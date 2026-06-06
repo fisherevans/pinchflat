@@ -44,6 +44,14 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
+  def upload_date_before_source_end do
+    dynamic(
+      [mi, source],
+      is_nil(source.download_end_date) or
+        fragment("date(?) <= ?", mi.uploaded_at, source.download_end_date)
+    )
+  end
+
   def format_matching_profile_preference do
     dynamic(
       [mi, source, media_profile],
@@ -175,6 +183,7 @@ defmodule Pinchflat.Media.MediaQuery do
       not (^downloaded()) and
         not (^download_prevented()) and
         ^upload_date_after_source_cutoff() and
+        ^upload_date_before_source_end() and
         ^format_matching_profile_preference() and
         ^matches_source_title_regex() and
         ^meets_min_and_max_duration() and
