@@ -58,6 +58,14 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     |> Float.to_string()
   end
 
+  @doc """
+  Height percentage for a cadence histogram bar. Zero stays zero (so empty months
+  read as gaps); any non-zero count gets a small floor so it's still visible.
+  """
+  def cadence_bar_pct(0, _max), do: 0
+  def cadence_bar_pct(_count, 0), do: 0
+  def cadence_bar_pct(count, max), do: max(4, round(count / max * 100))
+
   def cutoff_date_presets do
     [
       {"7 days", compute_date_offset(7)},

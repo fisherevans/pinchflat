@@ -79,6 +79,54 @@ defmodule Pinchflat.Media do
   end
 
   @doc """
+  Returns the upload cadence for a source: a contiguous month-by-month series of
+  how many indexed media items were uploaded each month, from the earliest to the
+  latest upload. Months with no uploads are included with a count of 0 so the time
+  axis is continuous (gaps and slowdowns are visible). Counts all indexed media,
+  not just downloaded, so it reflects the full catalog.
+
+  Returns [%{month: "YYYY-MM", count: integer}, ...].
+  """
+  def upload_cadence_by_month_for(%Source{} = source) do
+    counts =
+      from(m in MediaItem,
+        where: m.source_id == ^source.id and not is_nil(m.uploaded_at),
+        group_by: fragment("strftime('%Y-%m', ?)", m.uploaded_at),
+        select: {fragment("strftime('%Y-%m', ?)", m.uploaded_at), count(m.id)}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    case counts |> Map.keys() |> Enum.sort() do
+      [] ->
+        []
+
+      months ->
+        List.first(months)
+        |> months_through(List.last(months))
+        |> Enum.map(fn ym -> %{month: ym, count: Map.get(counts, ym, 0)} end)
+    end
+  end
+
+  defp months_through(start_ym, end_ym) do
+    {start_y, start_m} = parse_year_month(start_ym)
+    {end_y, end_m} = parse_year_month(end_ym)
+
+    {start_y, start_m}
+    |> Stream.iterate(fn
+      {year, 12} -> {year + 1, 1}
+      {year, month} -> {year, month + 1}
+    end)
+    |> Enum.take_while(fn ym -> ym <= {end_y, end_m} end)
+    |> Enum.map(fn {year, month} -> "#{year}-#{String.pad_leading(Integer.to_string(month), 2, "0")}" end)
+  end
+
+  defp parse_year_month(year_month) do
+    [year, month] = String.split(year_month, "-")
+    {String.to_integer(year), String.to_integer(month)}
+  end
+
+  @doc """
   For a given media_item, tells you if it is pending download. This is defined as
   the media_item satisfying `MediaQuery.pending` which you should really check out.
 

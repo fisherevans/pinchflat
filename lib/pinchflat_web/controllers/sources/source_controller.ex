@@ -92,7 +92,11 @@ defmodule PinchflatWeb.Sources.SourceController do
       |> Tasks.list_tasks_for(nil, [:executing, :available, :scheduled, :retryable])
       |> Repo.preload(:job)
 
-    render(conn, :show, source: source, pending_tasks: pending_tasks)
+    render(conn, :show,
+      source: source,
+      pending_tasks: pending_tasks,
+      cadence: Media.upload_cadence_by_month_for(source)
+    )
   end
 
   def edit(conn, %{"id" => id}) do

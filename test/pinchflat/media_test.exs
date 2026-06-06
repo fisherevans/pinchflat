@@ -189,6 +189,35 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "upload_cadence_by_month_for/1" do
+    test "returns a contiguous monthly series with zero-filled gaps" do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, uploaded_at: ~U[2024-01-15 00:00:00Z]})
+      media_item_fixture(%{source_id: source.id, uploaded_at: ~U[2024-01-20 00:00:00Z]})
+      media_item_fixture(%{source_id: source.id, uploaded_at: ~U[2024-03-05 00:00:00Z]})
+
+      assert Media.upload_cadence_by_month_for(source) == [
+               %{month: "2024-01", count: 2},
+               %{month: "2024-02", count: 0},
+               %{month: "2024-03", count: 1}
+             ]
+    end
+
+    test "spans a year boundary" do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, uploaded_at: ~U[2023-11-01 00:00:00Z]})
+      media_item_fixture(%{source_id: source.id, uploaded_at: ~U[2024-02-01 00:00:00Z]})
+
+      months = source |> Media.upload_cadence_by_month_for() |> Enum.map(& &1.month)
+      assert months == ["2023-11", "2023-12", "2024-01", "2024-02"]
+    end
+
+    test "returns an empty list when there are no uploads" do
+      source = source_fixture()
+      assert Media.upload_cadence_by_month_for(source) == []
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing shorts" do
     test "returns shorts and normal media when shorts_behaviour is :include" do
       source = source_fixture(%{media_profile_id: media_profile_fixture(%{shorts_behaviour: :include}).id})
