@@ -6,6 +6,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
 
   alias Pinchflat.Media
   alias Pinchflat.Downloading.MediaRetentionWorker
+  alias Pinchflat.Downloading.RetentionEviction
 
   setup do
     stub(UserScriptRunnerMock, :run, fn _event_type, _data -> {:ok, "", 0} end)
@@ -264,6 +265,27 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
 
       assert File.exists?(media_item.media_filepath)
       refute Repo.reload!(media_item).culled_at
+    end
+
+    test "records an audit entry for each budget eviction" do
+      source = source_fixture(%{keep_count: 1})
+
+      _old =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(3, :days),
+          media_size_bytes: 123
+        })
+
+      _new = media_item_with_attachments(%{source_id: source.id, uploaded_at: now_minus(1, :day)})
+
+      perform_job(MediaRetentionWorker, %{})
+
+      assert [eviction] = Repo.all(RetentionEviction)
+      assert eviction.source_id == source.id
+      assert eviction.keep_count == 1
+      assert eviction.eviction_strategy == "oldest"
+      assert eviction.bytes_freed == 123
     end
   end
 

@@ -14,6 +14,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
   alias Pinchflat.Media
   alias Pinchflat.Sources.Source
   alias Pinchflat.Downloading.RetentionPolicy
+  alias Pinchflat.Downloading.RetentionEviction
 
   @doc """
   Deletes media items that are past their retention date or that exceed a source's
@@ -100,6 +101,8 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
             prevent_download: true,
             culled_at: DateTime.utc_now()
           })
+
+          RetentionEviction.record(source, media_item)
         end)
       else
         Logger.warning(
