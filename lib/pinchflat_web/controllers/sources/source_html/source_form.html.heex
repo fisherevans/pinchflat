@@ -178,7 +178,7 @@
               eviction_strategy: document.getElementById('source_eviction_strategy')?.value || ''
             });
             try {
-              const res = await fetch(this.url + '?' + q.toString(), { headers: { accept: 'application/json' } });
+              const res = await fetch(this.url + '?' + q.toString());
               if (!res.ok) { this.error = true; this.loaded = true; return; }
               const d = await res.json();
               this.error = false;
