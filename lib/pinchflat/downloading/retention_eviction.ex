@@ -8,6 +8,7 @@ defmodule Pinchflat.Downloading.RetentionEviction do
 
   use Ecto.Schema
   import Ecto.Changeset
+  import Ecto.Query
 
   alias Pinchflat.Repo
   alias Pinchflat.Sources.Source
@@ -45,6 +46,18 @@ defmodule Pinchflat.Downloading.RetentionEviction do
     record
     |> cast(attrs, @allowed_fields)
     |> validate_required(@required_fields)
+  end
+
+  @doc """
+  Returns the most recent evictions for a source, newest first.
+  """
+  def recent_for(%Source{} = source, limit \\ 50) do
+    from(e in __MODULE__,
+      where: e.source_id == ^source.id,
+      order_by: [desc: e.inserted_at, desc: e.id],
+      limit: ^limit
+    )
+    |> Repo.all()
   end
 
   @doc """

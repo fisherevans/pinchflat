@@ -48,9 +48,9 @@ On the source form, a line shows "Would keep X of Y, evict Z (~N GB freed)" comp
 
 ### Eviction audit log
 
-Every budget eviction writes an append-only `retention_evictions` row: what, when, bytes freed, and a snapshot of the triggering budget. Denormalized `media_id`/`title` so rows survive media-item changes.
+Every budget eviction writes an append-only `retention_evictions` row: what, when, bytes freed, and a snapshot of the triggering budget. Denormalized `media_id`/`title` so rows survive media-item changes. Surfaced in the UI as an **Evictions** tab on the source page (title, space freed, which budget triggered it, when).
 
-- **How:** `Pinchflat.Downloading.RetentionEviction.record/2`, called from the worker. UI surfacing of the log is deferred.
+- **How:** `Pinchflat.Downloading.RetentionEviction.record/2` (called from the worker) and `recent_for/2` (powers the tab).
 
 ---
 

@@ -66,6 +66,25 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   def cadence_bar_pct(_count, 0), do: 0
   def cadence_bar_pct(count, max), do: max(4, round(count / max * 100))
 
+  @doc """
+  A short human label for the budget that triggered an eviction, e.g.
+  "keep 20 (oldest)" or "max 50 GB (shortest)".
+  """
+  def eviction_reason(eviction) do
+    budget =
+      [
+        eviction.keep_count && "keep #{eviction.keep_count}",
+        eviction.keep_bytes && "max #{gigabytes_from_bytes(eviction.keep_bytes)} GB"
+      ]
+      |> Enum.filter(& &1)
+      |> Enum.join(", ")
+
+    case budget do
+      "" -> eviction.eviction_strategy || "budget"
+      label -> "#{label} (#{eviction.eviction_strategy})"
+    end
+  end
+
   def cutoff_date_presets do
     [
       {"7 days", compute_date_offset(7)},

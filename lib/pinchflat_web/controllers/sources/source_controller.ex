@@ -12,6 +12,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Downloading.RetentionPolicy
+  alias Pinchflat.Downloading.RetentionEviction
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
@@ -118,7 +119,8 @@ defmodule PinchflatWeb.Sources.SourceController do
     render(conn, :show,
       source: source,
       pending_tasks: pending_tasks,
-      cadence: Media.upload_cadence_by_month_for(source)
+      cadence: Media.upload_cadence_by_month_for(source),
+      evictions: RetentionEviction.recent_for(source)
     )
   end
 
