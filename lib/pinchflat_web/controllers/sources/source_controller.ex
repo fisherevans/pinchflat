@@ -5,6 +5,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Media.FilterRules
   alias Pinchflat.Tasks
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
@@ -51,7 +52,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def create(conn, %{"source" => source_params}) do
-    case Sources.create_source(keep_bytes_from_params(source_params)) do
+    case Sources.create_source(normalize_source_params(source_params)) do
       {:ok, source} ->
         redirect_location =
           if Settings.get!(:onboarding), do: ~p"/?onboarding=1", else: ~p"/sources/#{source}"
@@ -108,6 +109,25 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
+  # Returns how an (unsaved) structured filter rule set splits this source's indexed
+  # media. Powers the live preview on the rule builder. Rescues invalid patterns so a
+  # half-built rule set shows an error state instead of 500ing.
+  def rules_preview(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+    config = parse_filter_config(params["config"])
+
+    total = Repo.aggregate(from(m in MediaItem, where: m.source_id == ^source.id), :count)
+
+    matched =
+      from(m in MediaItem, where: m.source_id == ^source.id)
+      |> FilterRules.apply_rules(%{source | filter_config: config})
+      |> Repo.aggregate(:count)
+
+    json(conn, %{total: total, matched: matched, excluded: total - matched})
+  rescue
+    _ -> json(conn, %{error: true})
+  end
+
   def show(conn, %{"id" => id}) do
     source = Repo.preload(Sources.get_source!(id), :media_profile)
 
@@ -139,7 +159,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   def update(conn, %{"id" => id, "source" => source_params}) do
     source = Sources.get_source!(id)
 
-    case Sources.update_source(source, keep_bytes_from_params(source_params)) do
+    case Sources.update_source(source, normalize_source_params(source_params)) do
       {:ok, source} ->
         conn
         |> put_flash(:info, "Source updated successfully.")
@@ -237,6 +257,22 @@ defmodule PinchflatWeb.Sources.SourceController do
     |> Repo.all()
   end
 
+  defp normalize_source_params(params) do
+    params
+    |> keep_bytes_from_params()
+    |> filter_config_from_params()
+  end
+
+  # The filter rule builder submits its rules as a JSON string in filter_config_json.
+  # Parse it into the filter_config map the schema expects.
+  defp filter_config_from_params(%{"filter_config_json" => json} = params) do
+    params
+    |> Map.put("filter_config", parse_filter_config(json))
+    |> Map.delete("filter_config_json")
+  end
+
+  defp filter_config_from_params(params), do: params
+
   # The size budget is entered in gigabytes for usability but stored as bytes.
   # Convert and drop the virtual param before it reaches the changeset. An empty
   # value clears the budget (nil); a missing key leaves it untouched.
@@ -265,6 +301,15 @@ defmodule PinchflatWeb.Sources.SourceController do
     case Integer.parse(String.trim(to_string(value))) do
       {int, _rest} -> int
       :error -> nil
+    end
+  end
+
+  defp parse_filter_config(nil), do: %{}
+
+  defp parse_filter_config(json) do
+    case Phoenix.json_library().decode(json) do
+      {:ok, map} when is_map(map) -> map
+      _ -> %{}
     end
   end
 

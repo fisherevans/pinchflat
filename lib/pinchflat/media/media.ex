@@ -10,6 +10,7 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Tasks
   alias Pinchflat.Sources.Source
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Media.FilterRules
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Metadata.MediaMetadata
 
@@ -63,6 +64,7 @@ defmodule Pinchflat.Media do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending()))
+    |> FilterRules.apply_rules(source)
     |> Repo.all()
   end
 
@@ -140,6 +142,7 @@ defmodule Pinchflat.Media do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic([m, s, mp], m.id == ^media_item.id and ^MediaQuery.pending()))
+    |> FilterRules.apply_rules(media_item.source)
     |> Repo.exists?()
   end
 

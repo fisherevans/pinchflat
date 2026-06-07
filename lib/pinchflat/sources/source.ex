@@ -41,6 +41,7 @@ defmodule Pinchflat.Sources.Source do
     max_delete_percent
     title_filter_regex
     title_exclude_regex
+    filter_config
     media_profile_id
     output_path_template_override
     marked_for_deletion_at
@@ -104,6 +105,7 @@ defmodule Pinchflat.Sources.Source do
     field :original_url, :string
     field :title_filter_regex, :string
     field :title_exclude_regex, :string
+    field :filter_config, :map, default: %{}
     field :output_path_template_override, :string
 
     field :min_duration_seconds, :integer

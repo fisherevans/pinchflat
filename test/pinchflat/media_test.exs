@@ -467,6 +467,89 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_pending_media_items_for/1 when testing filter rules" do
+    test "title contains rule keeps only matching titles" do
+      source =
+        source_fixture(%{
+          filter_config: %{
+            "match" => "all",
+            "rules" => [%{"field" => "title", "operator" => "contains", "value" => "(?i)science"}]
+          }
+        })
+
+      keep = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "The Science of Slime"})
+      _drop = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Cooking Show"})
+
+      assert Media.list_pending_media_items_for(source) == [keep]
+    end
+
+    test "duration longer_than rule keeps only longer media" do
+      source =
+        source_fixture(%{
+          filter_config: %{
+            "match" => "all",
+            "rules" => [%{"field" => "duration", "operator" => "longer_than", "value" => "60"}]
+          }
+        })
+
+      _short = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 30})
+      long = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 120})
+
+      assert Media.list_pending_media_items_for(source) == [long]
+    end
+
+    test "match all requires every rule" do
+      rules = [
+        %{"field" => "title", "operator" => "contains", "value" => "(?i)science"},
+        %{"field" => "duration", "operator" => "longer_than", "value" => "60"}
+      ]
+
+      source = source_fixture(%{filter_config: %{"match" => "all", "rules" => rules}})
+
+      both = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Science!", duration_seconds: 120})
+      _one = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Science!", duration_seconds: 10})
+
+      assert Media.list_pending_media_items_for(source) == [both]
+    end
+
+    test "match any requires at least one rule" do
+      rules = [
+        %{"field" => "title", "operator" => "contains", "value" => "(?i)science"},
+        %{"field" => "duration", "operator" => "longer_than", "value" => "60"}
+      ]
+
+      source = source_fixture(%{filter_config: %{"match" => "any", "rules" => rules}})
+
+      title_only =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Science!", duration_seconds: 10})
+
+      dur_only =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Cooking", duration_seconds: 120})
+
+      _neither =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Cooking", duration_seconds: 10})
+
+      ids = source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) |> Enum.sort()
+      assert ids == Enum.sort([title_only.id, dur_only.id])
+    end
+
+    test "ignores malformed or blank rules" do
+      source =
+        source_fixture(%{
+          filter_config: %{
+            "match" => "all",
+            "rules" => [%{"field" => "title", "operator" => "contains", "value" => ""}, %{"junk" => true}]
+          }
+        })
+
+      a = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      b = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      ids = source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) |> Enum.sort()
+      assert ids == Enum.sort([a.id, b.id])
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing title exclude regex" do
     test "excludes media items whose title matches the exclude regex" do
       source = source_fixture(%{title_exclude_regex: "(?i)compilation"})
