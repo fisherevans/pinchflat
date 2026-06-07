@@ -112,9 +112,31 @@
       />
     </section>
 
-    <.cadence_histogram cadence={@cadence} />
-
     <section x-data={"{ cutoffDate: '#{f[:download_cutoff_date].value}' }"}>
+      <div :if={@cadence != []} class="mb-5">
+        <% max_count = @cadence |> Enum.map(& &1.count) |> Enum.max() %>
+        <h3 class="font-bold text-xl mb-1 mt-6">Upload Cadence</h3>
+        <p class="text-sm mb-3 opacity-70">
+          When this source published, by month. Click a bar to set the download start date - highlighted months are inside the window.
+        </p>
+        <div class="flex items-end gap-px h-32 overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
+          <div
+            :for={bucket <- @cadence}
+            class="w-1.5 shrink-0 cursor-pointer rounded-t-sm hover:opacity-100"
+            style={"height: #{cadence_bar_pct(bucket.count, max_count)}%"}
+            title={"#{bucket.month}: #{bucket.count} uploads (click to start here)"}
+            x-bind:class={"'#{bucket.month}' >= (cutoffDate || '').slice(0,7) ? 'bg-primary' : 'bg-bodydark opacity-40'"}
+            x-on:click={"cutoffDate = '#{bucket.month}-01'"}
+          >
+          </div>
+        </div>
+        <div class="mt-1 flex justify-between text-xs opacity-70">
+          <span>{List.first(@cadence).month}</span>
+          <span>peak {max_count}/mo</span>
+          <span>{List.last(@cadence).month}</span>
+        </div>
+      </div>
+
       <.input
         field={f[:download_cutoff_date]}
         type="text"

@@ -72,8 +72,8 @@ Upper bound on upload date, complementing the existing `download_cutoff_date` lo
 
 A month-by-month bar chart of when a source published content (all indexed media, zero-filled gaps). Makes choosing a download window legible - you can see active periods and droughts at a glance. Shown on the source overview, and on the edit form directly above the date-window fields so the cadence sits next to the cutoff/end-date controls you're setting.
 
-- **See it:** source page → Source tab → "Upload Cadence"; also the source edit form.
-- **How:** `Media.upload_cadence_by_month_for/1` aggregates `uploaded_at` into a continuous monthly series; rendered by the shared `cadence_histogram/1` component as CSS bars (no JS chart lib). Read-only for now (the interactive drag-to-select version is deferred).
+- **See it:** source page → Source tab → "Upload Cadence" (read-only); also the source edit form, where it's **interactive**: click a bar to set the download cutoff (start) date, and months inside the current window are highlighted live as you click or type the cutoff.
+- **How:** `Media.upload_cadence_by_month_for/1` aggregates `uploaded_at` into a continuous monthly series. The overview uses the read-only `cadence_histogram/1` component; the form renders an interactive version whose bars share the cutoff-date Alpine state (click sets it, highlight reads it). CSS bars, no JS chart lib.
 - The browsable media list (Pending / Downloaded / Other tabs) already exists upstream.
 
 ---
