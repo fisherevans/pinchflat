@@ -40,6 +40,7 @@ defmodule Pinchflat.Sources.Source do
     eviction_strategy
     max_delete_percent
     title_filter_regex
+    title_exclude_regex
     media_profile_id
     output_path_template_override
     marked_for_deletion_at
@@ -102,6 +103,7 @@ defmodule Pinchflat.Sources.Source do
     field :max_delete_percent, :integer
     field :original_url, :string
     field :title_filter_regex, :string
+    field :title_exclude_regex, :string
     field :output_path_template_override, :string
 
     field :min_duration_seconds, :integer
@@ -140,7 +142,8 @@ defmodule Pinchflat.Sources.Source do
     |> dynamic_default(:custom_name, fn cs -> get_field(cs, :collection_name) end)
     |> dynamic_default(:uuid, fn _ -> Ecto.UUID.generate() end)
     |> validate_required(required_fields)
-    |> validate_title_regex()
+    |> validate_regex_field(:title_filter_regex)
+    |> validate_regex_field(:title_exclude_regex)
     |> validate_min_and_max_durations()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     |> validate_number(:keep_count, greater_than_or_equal_to: 0)
@@ -182,14 +185,18 @@ defmodule Pinchflat.Sources.Source do
     ~r<^(?:(?!youtube\.com/(watch|shorts|embed)|youtu\.be).)*$>
   end
 
-  defp validate_title_regex(%{changes: %{title_filter_regex: regex}} = changeset) when is_binary(regex) do
-    case Ecto.Adapters.SQL.query(Repo, "SELECT regexp_like('', ?)", [regex]) do
-      {:ok, _} -> changeset
-      _ -> add_error(changeset, :title_filter_regex, "is invalid")
+  defp validate_regex_field(changeset, field) do
+    case get_change(changeset, field) do
+      regex when is_binary(regex) ->
+        case Ecto.Adapters.SQL.query(Repo, "SELECT regexp_like('', ?)", [regex]) do
+          {:ok, _} -> changeset
+          _ -> add_error(changeset, field, "is invalid")
+        end
+
+      _ ->
+        changeset
     end
   end
-
-  defp validate_title_regex(changeset), do: changeset
 
   defp validate_min_and_max_durations(changeset) do
     min_duration = get_change(changeset, :min_duration_seconds)

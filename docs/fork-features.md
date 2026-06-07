@@ -9,6 +9,7 @@ Branch: `fork-mvp`. All features below are tested and pass the full `mix check` 
 ## Epic 0 - Metadata foundation
 
 ### Metadata-only reindex action
+
 Forces a full re-enumeration of a source's collection and upserts `media_items` without enqueueing any downloads - even on a source with `download_media` enabled. Useful for backfilling metadata on old videos (to power the cadence histogram, filter previews, etc).
 
 - **Use it:** source page → Actions → "Reindex Metadata (no download)".
@@ -22,26 +23,31 @@ Forces a full re-enumeration of a source's collection and upserts `media_items` 
 Per-source budgets that keep a library bounded and self-trimming, instead of upstream's days-only retention.
 
 ### Budgets and eviction
+
 - **`keep_count`** - keep at most N items. **`keep_bytes`** - keep at most N bytes (entered as GB in the UI). Most restrictive wins.
 - **`eviction_strategy`** - `oldest` / `newest` / `shortest` / `longest`. Decides which items are kept vs evicted.
 - **Use it:** source form (advanced) → Keep Most Recent / Maximum Total Size / Eviction Strategy.
 - **How:** `Pinchflat.Downloading.RetentionPolicy` is a pure evaluator (`eviction_candidates/2`). The `MediaRetentionWorker` adds a budget pass that evicts via `Media.delete_media_files` (sets `prevent_download` + `culled_at`), respecting `prevent_culling` pins.
 
 ### Download gating (don't download then evict)
+
 The count budget also gates download selection: only the N items the eviction strategy would keep are eligible to download, ranked from indexed metadata. So `keep_count = 10` with no cutoff downloads only the newest 10, not the whole back catalog.
 
 - **How:** `MediaQuery.within_keep_count_window/0` - a correlated-subquery predicate in `pending`. `keep_bytes` can't gate downloads (sizes are unknown pre-download), so it's cleanup-only.
 - Verified: a real source went from 419 pending downloads to 0 once a count budget was set.
 
 ### Safety guard
+
 - **`max_delete_percent`** - skip eviction for a source if one run would remove more than this share of its downloaded media. Opt-in (blank = no guard).
 
 ### Live preview
+
 On the source form, a line shows "Would keep X of Y, evict Z (~N GB freed)" computed live against the source's real downloaded media as you change the budget - before saving.
 
 - **How:** `GET /sources/:id/retention_preview` returns JSON from `RetentionPolicy.summarize/2`. Alpine on the form fetches it (debounced). Note: the fetch must not send `Accept: application/json` (the browser pipeline's `:accepts ["html"]` 406s it).
 
 ### Eviction audit log
+
 Every budget eviction writes an append-only `retention_evictions` row: what, when, bytes freed, and a snapshot of the triggering budget. Denormalized `media_id`/`title` so rows survive media-item changes.
 
 - **How:** `Pinchflat.Downloading.RetentionEviction.record/2`, called from the worker. UI surfacing of the log is deferred.
@@ -51,6 +57,7 @@ Every budget eviction writes an append-only `retention_evictions` row: what, whe
 ## Epic 2 - Selection windows
 
 ### Download end date
+
 Upper bound on upload date, complementing the existing `download_cutoff_date` lower bound. Together they form an explicit date range (e.g. only a show's 2022 run). Gates download selection only.
 
 - **Use it:** source form (advanced) → Download End Date.
@@ -62,8 +69,30 @@ Upper bound on upload date, complementing the existing `download_cutoff_date` lo
 ## Epic 3 - Metadata-driven config UX
 
 ### Upload-cadence histogram
+
 A month-by-month bar chart of when a source published content (all indexed media, zero-filled gaps), on the source overview. Makes choosing a download window legible - you can see active periods and droughts at a glance.
 
 - **See it:** source page → Source tab → "Upload Cadence".
 - **How:** `Media.upload_cadence_by_month_for/1` aggregates `uploaded_at` into a continuous monthly series; rendered server-side as CSS bars (no JS chart lib). Read-only for now (the interactive drag-to-select version is deferred).
 - The browsable media list (Pending / Downloaded / Other tabs) already exists upstream.
+
+---
+
+## Epic 4 - Filtering
+
+### Title exclude regex
+
+Inverse of the existing `title_filter_regex` (which only includes): media whose title matches `title_exclude_regex` is NOT downloaded. Solves the common case of dropping junk by title - "compilation", "best of", emoji, `#shorts` - which the include-only filter couldn't express. Use alternation (`foo|bar`) to exclude multiple terms in one pattern.
+
+- **Use it:** source form (advanced) → Title Exclude Regex.
+- **How:** `MediaQuery.does_not_match_source_exclude_regex/0` in `pending` (negated `regexp_like`). Both regex fields share `validate_regex_field/2` on the changeset.
+
+### Live filter preview
+
+On the source form, a line shows "X of Y indexed videos match (Z excluded)" computed live against the source's real indexed media as you edit the include/exclude patterns. A half-typed or invalid regex shows "Invalid regex" instead of crashing.
+
+- **How:** `GET /sources/:id/filter_preview` runs the include/exclude patterns against the source's `media_items` and returns match counts; invalid patterns are probed first and return `{error: true}`. Same Alpine-fetch pattern as the retention preview (no `Accept: application/json` header).
+
+### Status / deferred
+
+This is the first slice of Epic 4. The full structured rule builder (multiple AND/OR rules across title/duration/date/flags with per-rule UI) is still ahead; a single exclude regex with alternation covers the most common multi-term case in the meantime. The "would download / keep / delete" three-way preview and the in-list live highlighting are also deferred.

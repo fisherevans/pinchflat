@@ -4,6 +4,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Media.MediaItem
   alias Pinchflat.Tasks
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
@@ -82,6 +83,28 @@ defmodule PinchflatWeb.Sources.SourceController do
     summary = RetentionPolicy.summarize(preview_source, Media.list_downloaded_media_items_for(source))
 
     json(conn, summary)
+  end
+
+  # Returns a JSON summary of how the given (unsaved) title filters split this source's
+  # indexed media: total vs how many match (would be eligible) vs excluded. Powers the
+  # live filter preview on the source form.
+  def filter_preview(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+    include = blank_to_nil(params["title_filter_regex"])
+    exclude = blank_to_nil(params["title_exclude_regex"])
+
+    if valid_regexes?([include, exclude]) do
+      total = Repo.aggregate(from(m in MediaItem, where: m.source_id == ^source.id), :count)
+
+      matched =
+        from(m in MediaItem, where: m.source_id == ^source.id)
+        |> apply_title_filters(include, exclude)
+        |> Repo.aggregate(:count)
+
+      json(conn, %{total: total, matched: matched, excluded: total - matched})
+    else
+      json(conn, %{error: true})
+    end
   end
 
   def show(conn, %{"id" => id}) do
@@ -235,6 +258,36 @@ defmodule PinchflatWeb.Sources.SourceController do
       {int, _rest} -> int
       :error -> nil
     end
+  end
+
+  defp blank_to_nil(value) do
+    case String.trim(to_string(value)) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp apply_title_filters(query, include, exclude) do
+    query
+    |> then(fn q ->
+      if include, do: where(q, [m], fragment("regexp_like(?, ?)", m.title, ^include)), else: q
+    end)
+    |> then(fn q ->
+      if exclude, do: where(q, [m], not fragment("regexp_like(?, ?)", m.title, ^exclude)), else: q
+    end)
+  end
+
+  # SQLite's regexp_like raises on an invalid pattern, which would 500 the preview.
+  # Probe each pattern against an empty string first so a half-typed regex just shows
+  # an error state instead of crashing.
+  defp valid_regexes?(patterns) do
+    Enum.all?(patterns, fn
+      nil ->
+        true
+
+      pattern ->
+        match?({:ok, _}, Ecto.Adapters.SQL.query(Repo, "SELECT regexp_like('', ?)", [pattern]))
+    end)
   end
 
   defp parse_eviction_strategy(value, fallback) do

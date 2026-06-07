@@ -270,6 +270,26 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "filter_preview" do
+    test "returns how the title filters split the source's indexed media", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, title: "Episode 1"})
+      media_item_fixture(%{source_id: source.id, title: "Episode 2"})
+      media_item_fixture(%{source_id: source.id, title: "Best Compilation"})
+
+      conn = get(conn, ~p"/sources/#{source.id}/filter_preview?#{[title_exclude_regex: "(?i)compilation"]}")
+      assert %{"total" => 3, "matched" => 2, "excluded" => 1} = json_response(conn, 200)
+    end
+
+    test "returns an error flag for an invalid regex", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, title: "Episode 1"})
+
+      conn = get(conn, ~p"/sources/#{source.id}/filter_preview?#{[title_exclude_regex: "(unclosed"]}")
+      assert %{"error" => true} = json_response(conn, 200)
+    end
+  end
+
   describe "force_metadata_refresh" do
     test "forces a metadata refresh", %{conn: conn} do
       source = source_fixture()

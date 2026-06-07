@@ -83,6 +83,13 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
+  def does_not_match_source_exclude_regex do
+    dynamic(
+      [mi, source],
+      is_nil(source.title_exclude_regex) or not fragment("regexp_like(?, ?)", mi.title, source.title_exclude_regex)
+    )
+  end
+
   def meets_min_and_max_duration do
     dynamic(
       [mi, source],
@@ -186,6 +193,7 @@ defmodule Pinchflat.Media.MediaQuery do
         ^upload_date_before_source_end() and
         ^format_matching_profile_preference() and
         ^matches_source_title_regex() and
+        ^does_not_match_source_exclude_regex() and
         ^meets_min_and_max_duration() and
         ^within_keep_count_window()
     )

@@ -254,14 +254,66 @@
         Tread carefully
       </p>
 
-      <.input
-        field={f[:title_filter_regex]}
-        type="text"
-        label="Title Filter Regex"
-        placeholder="(?i)^How to Bike$"
-        help={title_filter_regex_help()}
-        html_help={true}
-      />
+      <% filter_preview_url =
+        if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/filter_preview", else: "" %>
+      <section
+        x-data={
+          """
+          {
+            url: '#{filter_preview_url}',
+            loaded: false,
+            error: false,
+            summary: '',
+            async refresh() {
+              if (!this.url) return;
+              const q = new URLSearchParams({
+                title_filter_regex: document.getElementById('source_title_filter_regex')?.value || '',
+                title_exclude_regex: document.getElementById('source_title_exclude_regex')?.value || ''
+              });
+              try {
+                const res = await fetch(this.url + '?' + q.toString());
+                if (!res.ok) { this.error = true; this.loaded = true; return; }
+                const d = await res.json();
+                if (d.error) { this.error = true; this.loaded = true; return; }
+                this.error = false;
+                this.summary = d.matched + ' of ' + d.total + ' indexed videos match (' + d.excluded + ' excluded)';
+                this.loaded = true;
+              } catch (e) { this.error = true; this.loaded = true; }
+            }
+          }
+          """
+        }
+        x-init="refresh()"
+        x-on:input.debounce.400ms="refresh()"
+        x-on:change="refresh()"
+      >
+        <.input
+          field={f[:title_filter_regex]}
+          type="text"
+          label="Title Filter Regex (include)"
+          placeholder="(?i)^How to Bike$"
+          help={title_filter_regex_help()}
+          html_help={true}
+        />
+
+        <.input
+          field={f[:title_exclude_regex]}
+          type="text"
+          label="Title Exclude Regex"
+          placeholder="(?i)compilation|best of|#shorts"
+          help={title_exclude_regex_help()}
+          html_help={true}
+        />
+
+        <div
+          x-show="loaded"
+          x-cloak
+          class="mt-2 rounded-md border border-stroke px-4 py-3 text-sm font-medium dark:border-strokedark dark:bg-meta-4"
+        >
+          <span x-show="!error" x-text="summary"></span>
+          <span x-show="error" class="text-meta-1">Invalid regex</span>
+        </div>
+      </section>
 
       <section
         x-data={

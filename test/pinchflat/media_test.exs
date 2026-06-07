@@ -467,6 +467,37 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_pending_media_items_for/1 when testing title exclude regex" do
+    test "excludes media items whose title matches the exclude regex" do
+      source = source_fixture(%{title_exclude_regex: "(?i)compilation"})
+
+      kept = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Episode 1"})
+      _excluded = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Best Compilation 2024"})
+
+      assert Media.list_pending_media_items_for(source) == [kept]
+    end
+
+    test "supports alternation to exclude multiple terms" do
+      source = source_fixture(%{title_exclude_regex: "(?i)compilation|best of"})
+
+      kept = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Episode 1"})
+      _comp = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "A Compilation"})
+      _best = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Best Of The Year"})
+
+      assert Media.list_pending_media_items_for(source) == [kept]
+    end
+
+    test "does not apply an exclusion if none is specified" do
+      source = source_fixture(%{title_exclude_regex: nil})
+
+      one = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Compilation"})
+      two = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Episode"})
+
+      pending_ids = source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) |> Enum.sort()
+      assert pending_ids == Enum.sort([one.id, two.id])
+    end
+  end
+
   describe "list_pending_media_items_for/1 when min and max durations" do
     test "returns media items that meet the min and max duration" do
       source = source_fixture(%{min_duration_seconds: 10, max_duration_seconds: 20})
