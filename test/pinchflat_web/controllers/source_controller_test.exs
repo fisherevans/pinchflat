@@ -290,6 +290,40 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "rules_preview and filter rule persistence" do
+    test "returns match counts for an unsaved rule set", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, title: "Science Now"})
+      media_item_fixture(%{source_id: source.id, title: "Cooking Show"})
+
+      config = ~s|{"match":"all","rules":[{"field":"title","operator":"contains","value":"(?i)science"}]}|
+      conn = get(conn, ~p"/sources/#{source.id}/rules_preview?#{[config: config]}")
+      assert %{"total" => 2, "matched" => 1, "excluded" => 1} = json_response(conn, 200)
+    end
+
+    test "returns an error flag for an invalid rule pattern", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, title: "Science Now"})
+
+      config = ~s|{"match":"all","rules":[{"field":"title","operator":"contains","value":"(unclosed"}]}|
+      conn = get(conn, ~p"/sources/#{source.id}/rules_preview?#{[config: config]}")
+      assert %{"error" => true} = json_response(conn, 200)
+    end
+
+    test "persists filter rules submitted as filter_config_json", %{conn: conn} do
+      source = source_fixture()
+      config = ~s|{"match":"any","rules":[{"field":"title","operator":"excludes","value":"compilation"}]}|
+
+      put(conn, ~p"/sources/#{source.id}", source: %{filter_config_json: config})
+
+      assert Pinchflat.Sources.get_source!(source.id).filter_config ==
+               %{
+                 "match" => "any",
+                 "rules" => [%{"field" => "title", "operator" => "excludes", "value" => "compilation"}]
+               }
+    end
+  end
+
   describe "force_metadata_refresh" do
     test "forces a metadata refresh", %{conn: conn} do
       source = source_fixture()

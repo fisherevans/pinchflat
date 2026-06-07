@@ -339,6 +339,132 @@
         </div>
       </section>
 
+      <% rules_preview_url =
+        if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/rules_preview", else: "" %>
+      <section
+        class="mt-6"
+        data-config={filter_config_json(f[:filter_config].value)}
+        x-data={
+          """
+          {
+            match: 'all',
+            rules: [],
+            previewUrl: '#{rules_preview_url}',
+            preview: '',
+            previewError: false,
+            loaded: false,
+            init() {
+              try {
+                const cfg = JSON.parse(this.$el.dataset.config || '{}');
+                this.match = cfg.match || 'all';
+                this.rules = Array.isArray(cfg.rules) ? cfg.rules : [];
+              } catch (e) {}
+              this.$watch('rules', () => this.refresh());
+              this.$watch('match', () => this.refresh());
+              this.refresh();
+            },
+            addRule() { this.rules.push({ field: 'title', operator: 'excludes', value: '' }); },
+            removeRule(i) { this.rules.splice(i, 1); },
+            operatorsFor(field) {
+              return field === 'duration'
+                ? [['longer_than', 'longer than (sec)'], ['shorter_than', 'shorter than (sec)']]
+                : [['contains', 'contains'], ['excludes', 'excludes']];
+            },
+            json() { return JSON.stringify({ match: this.match, rules: this.rules }); },
+            async refresh() {
+              if (!this.previewUrl) return;
+              try {
+                const res = await fetch(this.previewUrl + '?config=' + encodeURIComponent(this.json()));
+                if (!res.ok) { this.previewError = true; this.loaded = true; return; }
+                const d = await res.json();
+                if (d.error) { this.previewError = true; this.loaded = true; return; }
+                this.previewError = false;
+                this.preview = d.matched + ' of ' + d.total + ' indexed videos match (' + d.excluded + ' excluded)';
+                this.loaded = true;
+              } catch (e) { this.previewError = true; this.loaded = true; }
+            }
+          }
+          """
+        }
+      >
+        <h3 class="mt-8 text-2xl text-black dark:text-white">Filter Rules</h3>
+        <p class="text-sm mt-2 mb-3 opacity-70">
+          Only media matching these rules is downloaded. A more structured alternative to the regexes above (they all apply together).
+        </p>
+
+        <div class="flex items-center gap-2 mb-3 text-sm">
+          <span>Match</span>
+          <select
+            x-model="match"
+            class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
+          >
+            <option value="all">all rules</option>
+            <option value="any">any rule</option>
+          </select>
+          <span>of the following:</span>
+        </div>
+
+        <template x-for="(rule, i) in rules" x-bind:key="i">
+          <div class="flex flex-wrap gap-2 mb-2 items-center">
+            <select
+              x-model="rule.field"
+              x-on:change="rule.operator = operatorsFor(rule.field)[0][0]"
+              class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
+            >
+              <option value="title">Title</option>
+              <option value="duration">Duration</option>
+            </select>
+            <template x-if="rule.field === 'title'">
+              <select
+                x-model="rule.operator"
+                class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
+              >
+                <option value="contains">contains</option>
+                <option value="excludes">excludes</option>
+              </select>
+            </template>
+            <template x-if="rule.field === 'duration'">
+              <select
+                x-model="rule.operator"
+                class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
+              >
+                <option value="longer_than">longer than (sec)</option>
+                <option value="shorter_than">shorter than (sec)</option>
+              </select>
+            </template>
+            <input
+              type="text"
+              x-model="rule.value"
+              x-bind:placeholder="rule.field === 'duration' ? 'seconds' : 'regex e.g. (?i)compilation'"
+              class="flex-1 min-w-40 rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
+            />
+            <button
+              type="button"
+              x-on:click="removeRule(i)"
+              class="px-2.5 py-1.5 rounded border border-stroke hover:text-meta-1 dark:border-strokedark"
+              title="Remove rule"
+            >
+              &times;
+            </button>
+          </div>
+        </template>
+
+        <button type="button" x-on:click="addRule()" class="mt-1 text-sm text-primary hover:underline">
+          + Add rule
+        </button>
+
+        <input type="hidden" name="source[filter_config_json]" x-bind:value="json()" />
+
+        <div
+          x-show="loaded"
+          x-cloak
+          class="mt-3 rounded-md border border-stroke px-4 py-3 text-sm font-medium dark:border-strokedark dark:bg-meta-4"
+        >
+          <span x-show="!previewError" x-text="preview"></span>
+          <span x-show="previewError" class="text-meta-1">Invalid rule pattern</span>
+        </div>
+      </section>
+
       <section
         x-data={
           """

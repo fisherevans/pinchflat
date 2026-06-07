@@ -157,6 +157,14 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     """
   end
 
+  @doc """
+  JSON for seeding the filter rule builder's initial state from a saved
+  filter_config (or an empty set for a new source).
+  """
+  def filter_config_json(value) do
+    Phoenix.json_library().encode!(value || %{})
+  end
+
   def title_exclude_regex_help do
     url = "https://github.com/nalgeon/sqlean/blob/main/docs/regexp.md#supported-syntax"
     classes = "underline decoration-bodydark decoration-1 hover:decoration-white"

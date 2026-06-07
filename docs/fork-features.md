@@ -93,6 +93,19 @@ On the source form, a line shows "X of Y indexed videos match (Z excluded)" comp
 
 - **How:** `GET /sources/:id/filter_preview` runs the include/exclude patterns against the source's `media_items` and returns match counts; invalid patterns are probed first and return `{error: true}`. Same Alpine-fetch pattern as the retention preview (no `Accept: application/json` header).
 
-### Status / deferred
+### Structured filter rule builder
 
-This is the first slice of Epic 4. The full structured rule builder (multiple AND/OR rules across title/duration/date/flags with per-rule UI) is still ahead; a single exclude regex with alternation covers the most common multi-term case in the meantime. The "would download / keep / delete" three-way preview and the in-list live highlighting are also deferred.
+A multi-rule filter on the source form: build a list of rules and combine them with **all** (AND) or **any** (OR). Each rule is `field` + `operator` + `value`:
+
+- title `contains` / `excludes` a regex
+- duration `longer than` / `shorter than` N seconds
+
+A live preview shows "X of Y indexed videos match (Z excluded)" as you edit, with an "Invalid rule pattern" state for a bad regex. Only matching media is downloaded; rules compose with the single title regexes above.
+
+- **Use it:** source form (advanced) → Filter Rules → Add rule.
+- **How:** rules are stored on `source.filter_config` (`%{"match", "rules"}` JSON) and compiled by `Pinchflat.Media.FilterRules` into a composable Ecto predicate applied in `list_pending_media_items_for` / `pending_download?`. The UI is Alpine-managed (rules array serialized to a hidden `filter_config_json` field, parsed in the controller). `GET /sources/:id/rules_preview` powers the live preview.
+- **Impl note:** operator selects use `x-if` with static `<option>`s rather than `x-for`-generated options, because Alpine's `x-model` + `x-for` options race resets the select to the first option on load. Caught by screenshotting.
+
+### Deferred
+
+The "would download / keep / delete" three-way preview and in-list live highlighting are still ahead, as are more rule fields (date, short/livestream flags) and nested AND/OR groups.
