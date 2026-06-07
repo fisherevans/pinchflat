@@ -128,7 +128,12 @@ defmodule PinchflatWeb.Sources.SourceController do
     source = Sources.get_source!(id)
     changeset = Sources.change_source(source)
 
-    render(conn, :edit, source: source, changeset: changeset, media_profiles: media_profiles())
+    render(conn, :edit,
+      source: source,
+      changeset: changeset,
+      media_profiles: media_profiles(),
+      cadence: Media.upload_cadence_by_month_for(source)
+    )
   end
 
   def update(conn, %{"id" => id, "source" => source_params}) do
@@ -144,7 +149,8 @@ defmodule PinchflatWeb.Sources.SourceController do
         render(conn, :edit,
           source: source,
           changeset: changeset,
-          media_profiles: media_profiles()
+          media_profiles: media_profiles(),
+          cadence: Media.upload_cadence_by_month_for(source)
         )
     end
   end

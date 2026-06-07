@@ -10,8 +10,42 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :action, :string, required: true
   attr :media_profiles, :list, required: true
   attr :method, :string, required: true
+  attr :cadence, :list, default: []
 
   def source_form(assigns)
+
+  @doc """
+  Renders a source's upload cadence as a month-by-month bar chart. Used on both the
+  source overview and the edit form (next to the date window controls).
+  """
+  attr :cadence, :list, required: true
+
+  def cadence_histogram(assigns) do
+    assigns = assign(assigns, :max_count, Enum.reduce(assigns.cadence, 0, fn b, acc -> max(acc, b.count) end))
+
+    ~H"""
+    <section :if={@cadence != []}>
+      <h3 class="font-bold text-xl mb-2 mt-6">Upload Cadence</h3>
+      <p class="text-sm mb-3 opacity-70">
+        When this source published content, by month (all indexed media). Use it to spot active periods and gaps when choosing a download window.
+      </p>
+      <div class="flex items-end gap-px h-32 overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
+        <div
+          :for={bucket <- @cadence}
+          class="w-1.5 shrink-0 rounded-t-sm bg-primary hover:bg-secondary"
+          style={"height: #{cadence_bar_pct(bucket.count, @max_count)}%"}
+          title={"#{bucket.month}: #{bucket.count} uploads"}
+        >
+        </div>
+      </div>
+      <div class="mt-1 flex justify-between text-xs opacity-70">
+        <span>{List.first(@cadence).month}</span>
+        <span>peak {@max_count}/mo</span>
+        <span>{List.last(@cadence).month}</span>
+      </div>
+    </section>
+    """
+  end
 
   def friendly_index_frequencies do
     [
