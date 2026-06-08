@@ -103,6 +103,34 @@ defmodule PinchflatWeb.CustomComponents.DashboardComponents do
   end
 
   @doc """
+  A diverging weekly activity graph: downloads grow up (green), deletions grow
+  down (red), around a center line. `weeks` is a list of `%{downloads:, deletions:}`.
+  """
+  attr :weeks, :list, required: true
+  attr :height, :string, default: "120px"
+
+  def activity_graph(assigns) do
+    max = Enum.reduce(assigns.weeks, 1, fn w, acc -> max(acc, max(w.downloads, w.deletions)) end)
+    assigns = assign(assigns, :max, max)
+
+    ~H"""
+    <div class="flex items-stretch gap-1" style={"height:#{@height}"}>
+      <div :for={w <- @weeks} class="flex flex-1 flex-col" title={"#{w.downloads} downloaded, #{w.deletions} culled"}>
+        <div class="flex flex-1 items-end justify-center border-b border-strokedark">
+          <div class="w-2/3 rounded-t-sm bg-meta-3" style={"height:#{graph_pct(w.downloads, @max)}%"}></div>
+        </div>
+        <div class="flex flex-1 items-start justify-center">
+          <div class="w-2/3 rounded-b-sm bg-meta-1" style={"height:#{graph_pct(w.deletions, @max)}%"}></div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp graph_pct(0, _max), do: 0
+  defp graph_pct(v, max), do: max(4, round(v / max * 100))
+
+  @doc """
   A colored, rounded avatar showing the first letter of a name. Color is derived
   from `seed` so it's stable per source.
   """
@@ -121,6 +149,39 @@ defmodule PinchflatWeb.CustomComponents.DashboardComponents do
       style={"background:linear-gradient(135deg, #{@color}, #{@color}bb)"}
     >
       {@initial}
+    </div>
+    """
+  end
+
+  @doc """
+  A labelled config summary card with an optional edit link - the organized
+  replacement for the raw attribute dump. Holds `config_kv` rows.
+  """
+  attr :title, :string, required: true
+  attr :href, :string, default: nil
+  slot :inner_block, required: true
+
+  def config_card(assigns) do
+    ~H"""
+    <div class="rounded-xl border border-stroke bg-meta-4/20 p-4 dark:border-strokedark">
+      <div class="mb-2 flex items-center justify-between">
+        <h4 class="font-bold text-black dark:text-white">{@title}</h4>
+        <.link :if={@href} href={@href} class="text-xs font-semibold text-primary hover:underline">edit</.link>
+      </div>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc "A single key/value row inside a `config_card`."
+  attr :label, :string, required: true
+  attr :value, :any, required: true
+
+  def config_kv(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between gap-3 border-b border-stroke py-1.5 text-sm last:border-0 dark:border-strokedark">
+      <span class="flex-none text-bodydark2">{@label}</span>
+      <span class="truncate text-right font-mono text-[13px] font-medium text-black dark:text-white">{@value}</span>
     </div>
     """
   end

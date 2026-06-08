@@ -1,11 +1,20 @@
-<div class="mb-6 flex gap-3 flex-row items-center justify-between">
-  <div class="flex gap-3 items-center min-w-0">
+<div class="mb-6 flex flex-row items-center justify-between gap-3">
+  <div class="flex min-w-0 items-center gap-4">
     <.link href={~p"/sources"}>
-      <.icon name="hero-arrow-left" class="w-10 h-10 hover:dark:text-white" />
+      <.icon name="hero-arrow-left" class="h-7 w-7 hover:dark:text-white" />
     </.link>
-    <h2 class="text-title-md2 font-bold text-black dark:text-white ml-4 truncate">
-      {@source.custom_name}
-    </h2>
+    <.source_avatar name={@source.custom_name} seed={@source.id} size="h-12 w-12" />
+    <div class="min-w-0">
+      <h2 class="truncate text-title-md2 font-bold text-black dark:text-white">
+        {@source.custom_name}
+      </h2>
+      <div class="flex items-center gap-3 text-sm">
+        <.subtle_link href={~p"/media_profiles/#{@source.media_profile_id}"}>
+          {@source.media_profile.name}
+        </.subtle_link>
+        <.status_pill status={if @source.enabled, do: :active, else: :paused} />
+      </div>
+    </div>
   </div>
 
   <nav>
@@ -23,20 +32,79 @@
         <.actions_dropdown source={@source} conn={@conn} />
       </:tab_append>
 
-      <:tab title="Source" id="source">
-        <div class="flex flex-col text-white gap-10">
+      <:tab title="Overview" id="source">
+        <div class="flex flex-col gap-6 text-black dark:text-white">
+          <div class="grid grid-cols-2 gap-3.5 md:grid-cols-4">
+            <.stat_tile label="Downloaded" value={to_string(@stats.downloaded)}>
+              <:delta>of <.localized_number number={@stats.indexed} /> indexed</:delta>
+            </.stat_tile>
+            <.stat_tile label="Library size" value={"#{Float.round(@stats.total_bytes / 1_000_000_000, 1)} GB"} />
+            <.stat_tile label="Pending" value={to_string(@stats.pending)}>
+              <:delta>waiting to download</:delta>
+            </.stat_tile>
+            <.stat_tile label="Retention" value={retention_value(@source)}>
+              <:delta>{@stats.evicted_total} evicted total</:delta>
+            </.stat_tile>
+          </div>
+
+          <section class="rounded-xl border border-stroke p-5 dark:border-strokedark">
+            <div class="mb-3 flex items-baseline justify-between">
+              <h3 class="text-lg font-bold">Activity</h3>
+              <span class="font-mono text-xs text-bodydark2">last 16 weeks</span>
+            </div>
+            <.activity_graph weeks={@activity} />
+            <div class="mt-3 flex gap-5 text-xs text-bodydark">
+              <span><span class="mr-1.5 inline-block h-2 w-2 rounded-sm bg-meta-3"></span>downloaded</span>
+              <span><span class="mr-1.5 inline-block h-2 w-2 rounded-sm bg-meta-1"></span>culled</span>
+            </div>
+          </section>
+
           <.cadence_histogram cadence={@cadence} />
 
           <section>
-            <h3 class="font-bold text-xl mb-2 mt-6">Raw Attributes</h3>
-            <section>
-              <strong>Media Profile:</strong>
-              <.subtle_link href={~p"/media_profiles/#{@source.media_profile_id}"}>
-                {@source.media_profile.name}
-              </.subtle_link>
-            </section>
+            <h3 class="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.1em] text-bodydark2">
+              Configuration
+            </h3>
+            <div class="grid gap-3.5 md:grid-cols-2">
+              <.config_card title="Download window" href={~p"/sources/#{@source}/edit"}>
+                <.config_kv
+                  label="Mode"
+                  value={if @source.keep_count, do: "Keep newest #{@source.keep_count}", else: "All matching"}
+                />
+                <.config_kv label="From" value={@source.download_cutoff_date || "any date"} />
+                <.config_kv label="Until" value={@source.download_end_date || "no upper bound"} />
+              </.config_card>
 
-            <.list_items_from_map map={Map.drop(Map.from_struct(@source), [:filter_config])} />
+              <.config_card title="Retention" href={~p"/sources/#{@source}/edit"}>
+                <.config_kv label="Keep count" value={@source.keep_count || "off"} />
+                <.config_kv
+                  label="Max size"
+                  value={
+                    if @source.keep_bytes, do: "#{Float.round(@source.keep_bytes / 1_000_000_000, 1)} GB", else: "off"
+                  }
+                />
+                <.config_kv label="Strategy" value={@source.eviction_strategy} />
+                <.config_kv
+                  label="Safety guard"
+                  value={if @source.max_delete_percent, do: "skip if >#{@source.max_delete_percent}%", else: "off"}
+                />
+              </.config_card>
+
+              <.config_card title="Filtering" href={~p"/sources/#{@source}/edit"}>
+                <.config_kv label="Include" value={@source.title_filter_regex || "—"} />
+                <.config_kv label="Exclude" value={@source.title_exclude_regex || "—"} />
+                <.config_kv
+                  label="Rules"
+                  value={if filter_rule_count(@source) > 0, do: "#{filter_rule_count(@source)} rule(s)", else: "none"}
+                />
+              </.config_card>
+
+              <.config_card title="Output" href={~p"/sources/#{@source}/edit"}>
+                <.config_kv label="Profile" value={@source.media_profile.name} />
+                <.config_kv label="Template" value={@source.output_path_template_override || "profile default"} />
+                <.config_kv label="Cookies" value={@source.cookie_behaviour} />
+              </.config_card>
+            </div>
           </section>
         </div>
       </:tab>

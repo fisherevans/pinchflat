@@ -69,6 +69,19 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ]
   end
 
+  @doc "A short headline value for the retention metric tile."
+  def retention_value(%{keep_count: n}) when is_integer(n), do: "Keep #{n}"
+
+  def retention_value(%{keep_bytes: b}) when is_integer(b), do: "#{Float.round(b / 1_000_000_000, 1)} GB"
+
+  def retention_value(%{retention_period_days: d}) when is_integer(d) and d > 0, do: "#{d}d"
+
+  def retention_value(_source), do: "Unlimited"
+
+  @doc "Count of configured filter rules on a source."
+  def filter_rule_count(%{filter_config: %{"rules" => rules}}) when is_list(rules), do: length(rules)
+  def filter_rule_count(_source), do: 0
+
   def eviction_strategies do
     [
       {"Oldest first (keep most recent)", :oldest},

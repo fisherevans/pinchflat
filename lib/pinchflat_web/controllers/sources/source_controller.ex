@@ -154,8 +154,59 @@ defmodule PinchflatWeb.Sources.SourceController do
       source: source,
       pending_tasks: pending_tasks,
       cadence: Media.upload_cadence_by_month_for(source),
-      evictions: RetentionEviction.recent_for(source)
+      evictions: RetentionEviction.recent_for(source),
+      stats: source_stats(source),
+      activity: source_weekly_activity(source)
     )
+  end
+
+  defp source_stats(source) do
+    base = from(m in MediaItem, where: m.source_id == ^source.id)
+    downloaded = from(m in base, where: not is_nil(m.media_filepath))
+
+    %{
+      indexed: Repo.aggregate(base, :count),
+      downloaded: Repo.aggregate(downloaded, :count),
+      pending: length(Media.list_pending_media_items_for(source)),
+      total_bytes: Repo.aggregate(downloaded, :sum, :media_size_bytes) || 0,
+      evicted_total: Repo.aggregate(from(e in RetentionEviction, where: e.source_id == ^source.id), :count)
+    }
+  end
+
+  @activity_weeks 16
+  defp source_weekly_activity(source) do
+    cutoff = DateTime.add(DateTime.utc_now(), -@activity_weeks * 7, :day)
+
+    downloads =
+      Repo.all(
+        from m in MediaItem,
+          where: m.source_id == ^source.id and not is_nil(m.media_downloaded_at) and m.media_downloaded_at >= ^cutoff,
+          select: m.media_downloaded_at
+      )
+
+    deletions =
+      Repo.all(
+        from e in RetentionEviction,
+          where: e.source_id == ^source.id and e.inserted_at >= ^cutoff,
+          select: e.inserted_at
+      )
+
+    dl_buckets = weekly_buckets(downloads)
+    del_buckets = weekly_buckets(deletions)
+
+    Enum.map(0..(@activity_weeks - 1), fn i ->
+      %{downloads: Enum.at(dl_buckets, i, 0), deletions: Enum.at(del_buckets, i, 0)}
+    end)
+  end
+
+  defp weekly_buckets(timestamps) do
+    now = DateTime.utc_now()
+    empty = List.duplicate(0, @activity_weeks)
+
+    Enum.reduce(timestamps, empty, fn dt, acc ->
+      index = @activity_weeks - 1 - min(@activity_weeks - 1, div(DateTime.diff(now, dt, :day), 7))
+      List.update_at(acc, index, &(&1 + 1))
+    end)
   end
 
   def edit(conn, %{"id" => id}) do
