@@ -271,16 +271,22 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "retention_curve" do
-    test "returns ordered downloaded sizes and totals", %{conn: conn} do
+    test "returns the whole indexed library with real and estimated sizes", %{conn: conn} do
       source = source_fixture()
       for _ <- 1..3, do: media_item_with_attachments(%{source_id: source.id, media_size_bytes: 1000})
+      # an indexed-but-not-downloaded item gets an estimated size (avg of the downloaded)
+      media_item_fixture(%{source_id: source.id, media_filepath: nil, media_size_bytes: nil})
 
       conn = get(conn, ~p"/sources/#{source.id}/retention_curve?eviction_strategy=oldest")
       body = json_response(conn, 200)
 
-      assert body["total"] == 3
-      assert body["total_bytes"] == 3000
-      assert length(body["sizes"]) == 3
+      assert body["total"] == 4
+      assert body["downloaded_count"] == 3
+      assert body["downloaded_bytes"] == 3000
+      assert body["avg_bytes"] == 1000
+      assert length(body["items"]) == 4
+      assert Enum.count(body["items"], & &1["est"]) == 1
+      assert Enum.find(body["items"], & &1["est"])["bytes"] == 1000
     end
   end
 

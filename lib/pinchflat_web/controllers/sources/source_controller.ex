@@ -147,21 +147,34 @@ defmodule PinchflatWeb.Sources.SourceController do
     _ -> json(conn, %{error: true})
   end
 
-  # Returns the source's downloaded media as an ordered list of byte sizes (most-keepable
-  # first for the given eviction strategy). The form builds the cumulative curve from this
-  # client-side so the count and size sliders show live "keep N ≈ X GB" readouts without a
-  # round-trip per drag.
+  # Returns the source's whole prospective library - every indexed item, downloaded or
+  # not - ordered most-keepable-first for the given eviction strategy. Downloaded items
+  # carry their real byte size; the rest are estimated from the average of what's been
+  # downloaded (flagged `est`), since their real size isn't known until they download.
+  # The form builds the cumulative curve from this client-side so the count/size sliders
+  # show live "keep N ≈ X GB" readouts without a round-trip per drag.
   def retention_curve(conn, %{"source_id" => id} = params) do
     source = Sources.get_source!(id)
     strategy = parse_eviction_strategy(params["eviction_strategy"], source.eviction_strategy)
-    items = Media.list_downloaded_media_items_for(source)
+    items = Media.list_indexed_media_items_for(source)
 
-    sizes =
+    downloaded_sizes = for i <- items, not is_nil(i.media_filepath), do: i.media_size_bytes || 0
+    avg = if downloaded_sizes == [], do: nil, else: round(Enum.sum(downloaded_sizes) / length(downloaded_sizes))
+
+    rows =
       %{source | eviction_strategy: strategy}
       |> RetentionPolicy.keep_order(items)
-      |> Enum.map(&(&1.media_size_bytes || 0))
+      |> Enum.map(fn i ->
+        if i.media_filepath, do: %{bytes: i.media_size_bytes || 0, est: false}, else: %{bytes: avg || 0, est: true}
+      end)
 
-    json(conn, %{total: length(sizes), total_bytes: Enum.sum(sizes), sizes: sizes})
+    json(conn, %{
+      total: length(rows),
+      downloaded_count: length(downloaded_sizes),
+      downloaded_bytes: Enum.sum(downloaded_sizes),
+      avg_bytes: avg,
+      items: rows
+    })
   end
 
   def show(conn, %{"id" => id}) do

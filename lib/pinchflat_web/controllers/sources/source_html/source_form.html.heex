@@ -596,9 +596,11 @@
             """
             {
               url: '#{curve_url}',
-              sizes: [],
+              items: [],
               total: 0,
-              totalBytes: 0,
+              downloadedCount: 0,
+              downloadedBytes: 0,
+              avgB: 0,
               loaded: false,
               keepCount: '#{f[:keep_count].value}',
               keepGb: '#{gigabytes_from_bytes(f[:keep_bytes].value)}',
@@ -612,22 +614,23 @@
                 try {
                   const res = await fetch(this.url + '?eviction_strategy=' + encodeURIComponent(this.strategy));
                   const d = await res.json();
-                  this.sizes = d.sizes || [];
+                  this.items = d.items || [];
                   this.total = d.total || 0;
-                  this.totalBytes = d.total_bytes || 0;
+                  this.downloadedCount = d.downloaded_count || 0;
+                  this.downloadedBytes = d.downloaded_bytes || 0;
+                  this.avgB = d.avg_bytes || 0;
                   this.loaded = true;
                 } catch (e) { this.loaded = true; }
               },
               gb(v) { return v.toFixed(1) + ' GB'; },
-              avgBytes() { return this.total ? this.totalBytes / this.total : 0; },
-              cum(n) { let s = 0; for (let i = 0; i < n && i < this.sizes.length; i++) s += this.sizes[i]; return s; },
-              gbForCount(n) { return (n <= this.sizes.length) ? this.cum(n) / 1e9 : (this.totalBytes + this.avgBytes() * (n - this.total)) / 1e9; },
+              cum(n) { let s = 0; for (let i = 0; i < n && i < this.items.length; i++) s += this.items[i].bytes; return s; },
+              allBytes() { return this.cum(this.items.length); },
+              gbForCount(n) { return (n <= this.items.length) ? this.cum(n) / 1e9 : (this.allBytes() + this.avgB * (n - this.total)) / 1e9; },
               countForGb(g) {
                 const cap = g * 1e9; let s = 0, i = 0;
-                for (; i < this.sizes.length; i++) { s += this.sizes[i]; if (s > cap) break; }
-                if (i < this.sizes.length) return i;
-                const a = this.avgBytes();
-                return a > 0 ? this.total + Math.floor((cap - this.totalBytes) / a) : i;
+                for (; i < this.items.length; i++) { s += this.items[i].bytes; if (s > cap) break; }
+                if (i < this.items.length) return i;
+                return this.avgB > 0 ? this.total + Math.floor((cap - this.allBytes()) / this.avgB) : i;
               },
               niceCeil(v) {
                 if (v <= 10) return 10;
@@ -636,25 +639,27 @@
                 return step * mag;
               },
               gbNiceCeil(v) { if (v <= 1) return Math.max(0.5, Math.ceil(v * 10) / 10); if (v <= 10) return Math.ceil(v); return this.niceCeil(v); },
-              countAxis() { return this.niceCeil(Math.max(this.total * 3, this.total + 25, parseInt(this.keepCount) || 0)); },
-              gbAxis() { return this.gbNiceCeil(Math.max((this.totalBytes / 1e9) * 3, parseFloat(this.keepGb) || 0, 0.5)); },
+              countAxis() { return this.niceCeil(Math.max(this.total * 1.5, this.total + 25, parseInt(this.keepCount) || 0)); },
+              gbAxis() { return this.gbNiceCeil(Math.max((this.allBytes() / 1e9) * 1.5, parseFloat(this.keepGb) || 0, 0.5)); },
               kcNum() { return this.keepCount === '' ? Infinity : (parseInt(this.keepCount) || 0); },
               gbNum() { return this.keepGb === '' ? Infinity : (parseFloat(this.keepGb) || 0); },
               sizeCapCount() { return this.keepGb === '' ? Infinity : this.countForGb(this.gbNum()); },
               effKeepRaw() { return Math.min(this.kcNum(), this.sizeCapCount()); },
               keptNow() { return Math.min(this.effKeepRaw(), this.total); },
+              keptEst() { let n = 0; const k = this.keptNow(); for (let i = 0; i < k && i < this.items.length; i++) if (this.items[i].est) n++; return n; },
               keepLabel() {
                 if (this.strategy === 'newest') return 'Keep earliest';
                 if (this.strategy === 'shortest') return 'Keep longest';
                 if (this.strategy === 'longest') return 'Keep shortest';
                 return 'Keep most recent';
               },
-              maxSize() { return Math.max(1, ...this.sizes, 1); },
-              barH(i) { return Math.sqrt(this.sizes[i] / this.maxSize()) * 100; },
+              maxBytes() { return Math.max(1, ...this.items.map(it => it.bytes), 1); },
+              barH(i) { return Math.sqrt(this.items[i].bytes / this.maxBytes()) * 100; },
+              barClass(i) { if (i >= this.keptNow()) return 'bg-meta-1/60'; return this.items[i].est ? 'bg-meta-3/40' : 'bg-meta-3'; },
               noCount() { return this.keepCount === ''; },
               noGb() { return this.keepGb === ''; },
               toggleNoCount() { this.keepCount = (this.keepCount === '') ? String(Math.min(this.total || 25, this.countAxis())) : ''; },
-              toggleNoGb() { this.keepGb = (this.keepGb === '') ? String(this.gbNiceCeil((this.totalBytes / 1e9) || 0.5)) : ''; }
+              toggleNoGb() { this.keepGb = (this.keepGb === '') ? String(this.gbNiceCeil((this.allBytes() / 1e9) || 0.5)) : ''; }
             }
             """
           }
@@ -663,17 +668,29 @@
             Capacity
             <.info_tip text="Cap the kept library by count and/or size. The most restrictive cap wins; whatever falls outside it is evicted using the strategy below. The count cap also limits what gets downloaded. Sliders run past your current library so you can leave room to grow." />
           </div>
-          <p class="mb-4 text-sm opacity-70">
-            The strip shows your downloaded library, ordered by the eviction strategy; green is kept, red is evicted.
+          <p class="mb-3 text-sm opacity-70">
+            The strip is your whole indexed library, ordered by the eviction strategy. Sizes for items you haven't
+            downloaded yet are estimated from the average of those you have.
           </p>
+          <div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-bodydark2">
+            <span class="flex items-center gap-1.5">
+              <span class="h-2.5 w-2.5 rounded-sm bg-meta-3"></span> kept · downloaded
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="h-2.5 w-2.5 rounded-sm bg-meta-3/40"></span> kept · estimated
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="h-2.5 w-2.5 rounded-sm bg-meta-1/60"></span> evicted
+            </span>
+          </div>
 
-          <%!-- Library size strip --%>
+          <%!-- Prospective-library strip: every indexed item, real size where known, estimated otherwise --%>
           <div x-show="loaded && total > 0" x-cloak class="mb-5">
             <div class="flex h-20 items-end gap-px overflow-hidden rounded-md border border-stroke bg-meta-4/20 p-1 dark:border-strokedark">
-              <template x-for="(s, i) in sizes" x-bind:key="i">
+              <template x-for="(it, i) in items" x-bind:key="i">
                 <div
                   class="min-w-px flex-1 rounded-t-sm transition-colors"
-                  x-bind:class="i < keptNow() ? 'bg-meta-3' : 'bg-meta-1/70'"
+                  x-bind:class="barClass(i)"
                   x-bind:style="'height:' + Math.max(4, barH(i)) + '%'"
                 >
                 </div>
@@ -681,19 +698,21 @@
             </div>
             <div class="mt-2 rounded-md border border-stroke px-4 py-2.5 text-sm font-medium dark:border-strokedark dark:bg-meta-4">
               <span class="text-meta-3" x-text="'Keep ' + keptNow()"></span>
-              <span class="opacity-60" x-text="' of ' + total + ' (' + gb(cum(keptNow()) / 1e9) + ')'"></span>
+              <span class="opacity-60" x-text="' of ' + total + ' (≈' + gb(cum(keptNow()) / 1e9) + ')'"></span>
               <span
                 x-show="keptNow() < total"
                 class="text-meta-1"
-                x-text="' · evict ' + (total - keptNow()) + ' (' + gb((totalBytes - cum(keptNow())) / 1e9) + ' freed)'"
+                x-text="' · evict ' + (total - keptNow()) + ' (≈' + gb((allBytes() - cum(keptNow())) / 1e9) + ' freed)'"
               >
               </span>
-              <span
-                x-show="effKeepRaw() > total && effKeepRaw() !== Infinity"
-                class="text-bodydark2"
-                x-text="' · cap ' + effKeepRaw() + ', room to grow'"
-              >
-              </span>
+              <div class="mt-0.5 text-xs font-normal text-bodydark2">
+                <span x-text="downloadedCount + ' downloaded so far'"></span>
+                <span
+                  x-show="keptEst() > 0"
+                  x-text="' · ' + keptEst() + ' of the kept set not downloaded yet (size estimated)'"
+                >
+                </span>
+              </div>
             </div>
           </div>
 
@@ -724,7 +743,7 @@
                 <span x-show="noCount()">No count limit</span>
                 <span x-show="!noCount()">
                   <span class="font-semibold text-black dark:text-white" x-text="kcNum() + ' items'"></span>
-                  <span x-text="'≈ ' + gb(gbForCount(kcNum())) + (kcNum() > total ? ' (est)' : '')"></span>
+                  <span x-text="'≈ ' + gb(gbForCount(kcNum())) + (kcNum() > downloadedCount ? ' (est)' : '')"></span>
                 </span>
               </div>
             </div>
@@ -752,15 +771,16 @@
                 <span x-show="noGb()">No size limit</span>
                 <span x-show="!noGb()">
                   <span class="font-semibold text-black dark:text-white" x-text="gb(gbNum())"></span>
-                  <span x-text="'≈ ' + sizeCapCount() + ' items' + (sizeCapCount() > total ? ' (est)' : '')"></span>
+                  <span x-text="'≈ ' + sizeCapCount() + ' items' + (sizeCapCount() > downloadedCount ? ' (est)' : '')">
+                  </span>
                 </span>
               </div>
             </div>
           </div>
 
           <p x-show="loaded && total === 0" x-cloak class="mt-3 text-xs text-bodydark2">
-            Nothing downloaded yet, so there's no library to measure - the sliders use a default range. These caps still
-            apply once content arrives, and the count cap also limits what gets downloaded.
+            Nothing indexed yet, so there's no library to measure - the sliders use a default range. These caps still
+            apply once content is indexed, and the count cap also limits what gets downloaded.
           </p>
 
           <%!-- These hidden fields are what actually submit --%>

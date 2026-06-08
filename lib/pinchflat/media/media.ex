@@ -81,6 +81,20 @@ defmodule Pinchflat.Media do
   end
 
   @doc """
+  Returns all indexed media_items for a source (anything with an upload date, i.e. it
+  has metadata), downloaded or not. Used by the retention curve to model the whole
+  prospective library, not just what's been pulled to disk yet.
+
+  Returns [%MediaItem{}, ...].
+  """
+  def list_indexed_media_items_for(%Source{} = source) do
+    MediaQuery.new()
+    |> where(^dynamic(^MediaQuery.for_source(source)))
+    |> where([m], not is_nil(m.uploaded_at))
+    |> Repo.all()
+  end
+
+  @doc """
   Returns the upload cadence for a source: a contiguous month-by-month series of
   how many indexed media items were uploaded each month, from the earliest to the
   latest upload. Months with no uploads are included with a count of 0 so the time
