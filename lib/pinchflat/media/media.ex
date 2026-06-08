@@ -11,6 +11,7 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Media.FilterRules
+  alias Pinchflat.Media.DownloadStatus
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Metadata.MediaMetadata
   alias Pinchflat.Metadata.TitleCleaner
@@ -339,9 +340,15 @@ defmodule Pinchflat.Media do
   Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}}
   """
   def create_media_item(attrs) do
-    %MediaItem{}
-    |> MediaItem.changeset(attrs)
-    |> Repo.insert()
+    result =
+      %MediaItem{}
+      |> MediaItem.changeset(attrs)
+      |> Repo.insert()
+
+    case result do
+      {:ok, media_item} -> DownloadStatus.recompute_and_persist(media_item)
+      error -> error
+    end
   end
 
   @doc """
@@ -360,17 +367,26 @@ defmodule Pinchflat.Media do
       |> Map.merge(Map.from_struct(media_attrs_struct))
       |> apply_title_cleaning(source)
 
-    %MediaItem{}
-    |> MediaItem.changeset(attrs)
-    |> Repo.insert(
-      on_conflict: [
-        set:
-          attrs
-          |> Map.drop(@fields_to_drop_on_update)
-          |> Map.to_list()
-      ],
-      conflict_target: [:source_id, :media_id]
-    )
+    result =
+      %MediaItem{}
+      |> MediaItem.changeset(attrs)
+      |> Repo.insert(
+        on_conflict: [
+          set:
+            attrs
+            |> Map.drop(@fields_to_drop_on_update)
+            |> Map.to_list()
+        ],
+        conflict_target: [:source_id, :media_id]
+      )
+
+    case result do
+      # Reload first: an on_conflict insert can return default values for columns it didn't
+      # set (e.g. media_filepath on a re-indexed, already-downloaded item), which would make
+      # the status computation read the row as not-downloaded.
+      {:ok, media_item} -> media_item |> Repo.reload() |> DownloadStatus.recompute_and_persist()
+      error -> error
+    end
   end
 
   # Preserves the raw title/description, and (when the source enables it) overwrites
@@ -397,12 +413,23 @@ defmodule Pinchflat.Media do
 
   Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}}
   """
-  def update_media_item(%MediaItem{} = media_item, attrs) do
+  def update_media_item(%MediaItem{} = media_item, attrs, opts \\ []) do
     update_attrs = Map.drop(attrs, @fields_to_drop_on_update)
 
-    media_item
-    |> MediaItem.changeset(update_attrs)
-    |> Repo.update()
+    case media_item |> MediaItem.changeset(update_attrs) |> Repo.update() do
+      {:ok, updated} ->
+        # Keep the persisted status in lockstep with whatever just changed. Callers that
+        # are themselves writing status fields pass `recompute_status: false` to avoid
+        # redundant work (the recompute helper writes directly, so there's no recursion).
+        if Keyword.get(opts, :recompute_status, true) do
+          DownloadStatus.recompute_and_persist(updated)
+        else
+          {:ok, updated}
+        end
+
+      error ->
+        error
+    end
   end
 
   @doc """

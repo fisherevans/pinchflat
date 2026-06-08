@@ -97,9 +97,15 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
         Logger.info("Evicting #{length(candidates)} media items over budget for source #{source.id}")
 
         Enum.each(candidates, fn media_item ->
+          # `last_evicted_at`/`last_bytes_freed` are the denormalized cache that lets the
+          # media table's "evicted" view stay a single-table query (and that tags the
+          # status reason as a budget eviction). The retention_evictions row is still the
+          # canonical audit log.
           Media.delete_media_files(media_item, %{
             prevent_download: true,
-            culled_at: DateTime.utc_now()
+            culled_at: DateTime.utc_now(),
+            last_evicted_at: DateTime.utc_now(),
+            last_bytes_freed: media_item.media_size_bytes || 0
           })
 
           RetentionEviction.record(source, media_item)

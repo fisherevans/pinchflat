@@ -47,8 +47,19 @@ defmodule Pinchflat.Media.MediaItem do
     :prevent_download,
     :prevent_culling,
     :culled_at,
-    :media_redownloaded_at
+    :media_redownloaded_at,
+    # Derived lifecycle status (see Pinchflat.Media.DownloadStatus) + eviction cache
+    :download_status,
+    :status_reason,
+    :status_computed_at,
+    :last_evicted_at,
+    :last_bytes_freed
   ]
+
+  # Closed, mutually-exclusive lifecycle states. Resolved by precedence in
+  # Pinchflat.Media.DownloadStatus. `pending`/`errored` together are the
+  # download-eligible set (== Media.list_pending_media_items_for/1).
+  @download_statuses ~w(pending downloaded filtered culled ignored errored)
   # Pretty much all the fields captured at index are required.
   @required_fields ~w(
     uuid
@@ -100,6 +111,12 @@ defmodule Pinchflat.Media.MediaItem do
     field :prevent_culling, :boolean, default: false
     field :culled_at, :utc_datetime
 
+    field :download_status, :string
+    field :status_reason, :string
+    field :status_computed_at, :utc_datetime
+    field :last_evicted_at, :utc_datetime
+    field :last_bytes_freed, :integer
+
     field :matching_search_term, :string, virtual: true
 
     belongs_to :source, Source
@@ -123,8 +140,12 @@ defmodule Pinchflat.Media.MediaItem do
     # Validate that the title does NOT start with "youtube video #" since that indicates a restriction by YouTube.
     # See issue #549 for more information.
     |> validate_format(:title, ~r/^(?!youtube video #)/)
+    |> validate_inclusion(:download_status, @download_statuses)
     |> unique_constraint([:media_id, :source_id])
   end
+
+  @doc "The closed set of valid `download_status` values."
+  def download_statuses, do: @download_statuses
 
   @doc false
   def filepath_attributes do

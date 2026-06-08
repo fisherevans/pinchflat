@@ -13,6 +13,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Metadata.TitleCleaner
+  alias Pinchflat.Media.RecomputeDownloadStatusWorker
   alias Pinchflat.Organizing.MediaOrganizeWorker
   alias Pinchflat.Downloading.RetentionPolicy
   alias Pinchflat.Downloading.RetentionEviction
@@ -332,6 +333,9 @@ defmodule PinchflatWeb.Sources.SourceController do
 
     case Sources.update_source(source, normalize_source_params(source_params)) do
       {:ok, source} ->
+        # Filter/profile/cutoff/cap edits can flip many items between pending and filtered.
+        RecomputeDownloadStatusWorker.kickoff(source)
+
         conn
         |> put_flash(:info, "Source updated successfully.")
         |> redirect(to: ~p"/sources/#{source}")
@@ -401,7 +405,10 @@ defmodule PinchflatWeb.Sources.SourceController do
       conn,
       id,
       "Reprocessing media: re-applying title cleaning and the season layout to downloaded items.",
-      &MediaOrganizeWorker.kickoff_with_task(&1, %{force: true})
+      fn source ->
+        MediaOrganizeWorker.kickoff_with_task(source, %{force: true})
+        RecomputeDownloadStatusWorker.kickoff(source)
+      end
     )
   end
 

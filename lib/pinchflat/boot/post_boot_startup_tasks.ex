@@ -7,6 +7,9 @@ defmodule Pinchflat.Boot.PostBootStartupTasks do
   Phoenix supervision tree.
   """
 
+  alias Pinchflat.Repo
+  alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Media.RecomputeDownloadStatusWorker
   alias Pinchflat.YtDlp.UpdateWorker, as: YtDlpUpdateWorker
 
   # restart: :temporary means that this process will never be restarted (ie: will run once and then die)
@@ -36,11 +39,22 @@ defmodule Pinchflat.Boot.PostBootStartupTasks do
 
   def init(state) do
     update_yt_dlp()
+    backfill_download_status()
 
     {:ok, state}
   end
 
   defp update_yt_dlp do
     YtDlpUpdateWorker.kickoff()
+  end
+
+  # One-time precise recompute of `download_status` for any rows the migration's SQL
+  # backfill left provisional (status_computed_at IS NULL). Idempotent: once every row
+  # has been computed, this finds nothing and enqueues nothing. New items get their
+  # status computed at insert, so they never appear here.
+  defp backfill_download_status do
+    from(m in MediaItem, where: is_nil(m.status_computed_at), distinct: true, select: m.source_id)
+    |> Repo.all()
+    |> Enum.each(fn source_id -> RecomputeDownloadStatusWorker.kickoff(%{id: source_id}) end)
   end
 end
