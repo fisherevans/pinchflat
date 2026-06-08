@@ -34,6 +34,30 @@ defmodule PinchflatWeb.Media.MediaTableLiveTest do
     end
   end
 
+  describe "global (cross-source) rendering" do
+    test "spans all sources and shows the source column", %{conn: conn} do
+      a = pending_item(source_fixture())
+      b = pending_item(source_fixture())
+
+      {:ok, _view, html} = live_isolated(conn, MediaTableLive, session: %{})
+
+      assert html =~ a.title
+      assert html =~ b.title
+      assert html =~ "Source"
+    end
+
+    test "honors a ?view seed from the session", %{conn: conn} do
+      source = source_fixture()
+      downloaded = media_item_fixture(%{source_id: source.id})
+      pending = pending_item(source)
+
+      {:ok, _view, html} = live_isolated(conn, MediaTableLive, session: %{"view" => "downloaded"})
+
+      assert html =~ downloaded.title
+      refute html =~ pending.title
+    end
+  end
+
   describe "status filtering" do
     test "filters to a single status", %{conn: conn} do
       source = source_fixture()

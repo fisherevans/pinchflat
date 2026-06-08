@@ -1,0 +1,7 @@
+<div class="mb-6 flex flex-row items-center justify-between gap-3">
+  <h2 class="text-title-md2 font-bold text-black dark:text-white">Media</h2>
+</div>
+
+<div class="max-w-full rounded-sm border border-stroke bg-white px-5 py-6 shadow-default dark:border-strokedark dark:bg-boxdark">
+  {live_render(@conn, PinchflatWeb.Media.MediaTableLive, id: "global-media-table", session: %{"view" => @view})}
+</div>
