@@ -15,6 +15,8 @@ defmodule PinchflatWeb.Media.MediaTableLive do
   alias Pinchflat.Media
   alias Pinchflat.Sources
   alias Pinchflat.Media.MediaTableColumns
+  alias Pinchflat.Media.TableViews
+  alias Pinchflat.Media.TablePresets
 
   @default_page_size 25
 
@@ -25,19 +27,21 @@ defmodule PinchflatWeb.Media.MediaTableLive do
     params = if is_map(params), do: params, else: %{}
     source_id = normalize_source_id(session["source_id"] || params["source_id"])
     source = source_id && Sources.get_source!(source_id)
+    scope = if source_id, do: "source", else: "global"
+    slug = session["view"] || params["view"] || TablePresets.default_slug()
 
     socket =
       socket
       |> assign(
         source_id: source_id,
         source: source,
-        status: session["status"] || params["status"] || "all",
-        columns: default_columns(source_id),
-        sort: %{key: "uploaded_at", direction: :desc},
+        scope: scope,
         page: 1,
         page_size: @default_page_size,
-        search: nil
+        search: nil,
+        views: TableViews.list_views(scope, source_id)
       )
+      |> apply_view(slug)
       |> load_records()
 
     {:ok, socket}
@@ -48,7 +52,7 @@ defmodule PinchflatWeb.Media.MediaTableLive do
   end
 
   def handle_event("filter_status", %{"status" => status}, socket) do
-    {:noreply, socket |> assign(status: status, page: 1) |> load_records()}
+    {:noreply, socket |> assign(status: status, active_view: nil, page: 1) |> load_records()}
   end
 
   def handle_event("page_change", %{"direction" => direction}, socket) do
@@ -57,11 +61,56 @@ defmodule PinchflatWeb.Media.MediaTableLive do
   end
 
   def handle_event("sort_update", %{"sort_key" => key}, socket) do
-    {:noreply, socket |> assign(sort: toggle_sort(socket.assigns.sort, key), page: 1) |> load_records()}
+    {:noreply,
+     socket |> assign(sort: toggle_sort(socket.assigns.sort, key), active_view: nil, page: 1) |> load_records()}
   end
 
   def handle_event("toggle_column", %{"key" => key}, socket) do
-    {:noreply, socket |> assign(columns: toggle_column(socket.assigns.columns, key)) |> load_records()}
+    {:noreply,
+     socket |> assign(columns: toggle_column(socket.assigns.columns, key), active_view: nil) |> load_records()}
+  end
+
+  def handle_event("select_view", %{"slug" => slug}, socket) do
+    {:noreply, socket |> apply_view(slug) |> load_records()}
+  end
+
+  def handle_event("save_view", %{"name" => name}, socket) do
+    a = socket.assigns
+
+    case TableViews.create_view(%{name: name, scope: a.scope, source_id: a.source_id, config: current_config(a)}) do
+      {:ok, view} ->
+        socket =
+          socket
+          |> assign(views: TableViews.list_views(a.scope, a.source_id))
+          |> apply_view(view.slug)
+          |> load_records()
+
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Couldn't save that view.")}
+    end
+  end
+
+  def handle_event("delete_view", %{"id" => id}, socket) do
+    a = socket.assigns
+
+    case TableViews.get_view_by_id(id) do
+      nil ->
+        {:noreply, socket}
+
+      view ->
+        TableViews.delete_view(view)
+        next_slug = if a.active_view == view.slug, do: TablePresets.default_slug(), else: a.active_view
+
+        socket =
+          socket
+          |> assign(views: TableViews.list_views(a.scope, a.source_id))
+          |> apply_view(next_slug)
+          |> load_records()
+
+        {:noreply, socket}
+    end
   end
 
   def handle_event("reload_page", _params, socket) do
@@ -116,8 +165,42 @@ defmodule PinchflatWeb.Media.MediaTableLive do
     end
   end
 
-  defp default_columns(nil), do: ["title", "source", "status", "reason", "uploaded_at"]
-  defp default_columns(_source_id), do: ["title", "status", "reason", "uploaded_at", "duration"]
+  # Resolves a view slug (preset or saved view) into table state. Unknown slugs fall back
+  # to the default preset. Columns/status are sanitized so a stale saved view degrades
+  # gracefully rather than erroring.
+  defp apply_view(socket, slug) do
+    {config, resolved_slug} = TableViews.resolve_config(socket.assigns.scope, socket.assigns.source_id, slug)
+
+    assign(socket,
+      active_view: resolved_slug,
+      status: config["status"] || "all",
+      columns: resolve_columns(config["columns"], socket.assigns.source_id),
+      sort: resolve_sort_config(config["sort"]),
+      page_size: config["page_size"] || @default_page_size,
+      page: 1
+    )
+  end
+
+  defp resolve_columns(columns, source_id) do
+    columns = MediaTableColumns.sanitize(columns || [])
+    # The global table always wants the source column so rows are attributable.
+    if is_nil(source_id) and "source" not in columns, do: ["source" | columns], else: columns
+  end
+
+  defp resolve_sort_config(%{"key" => key, "direction" => dir}) when is_binary(key) do
+    %{key: key, direction: if(dir == "asc", do: :asc, else: :desc)}
+  end
+
+  defp resolve_sort_config(_sort), do: %{key: "uploaded_at", direction: :desc}
+
+  defp current_config(assigns) do
+    %{
+      "status" => assigns.status,
+      "columns" => assigns.columns,
+      "sort" => %{"key" => to_string(assigns.sort.key), "direction" => to_string(assigns.sort.direction)},
+      "page_size" => assigns.page_size
+    }
+  end
 
   defp normalize_source_id(nil), do: nil
   defp normalize_source_id(id) when is_integer(id), do: id
@@ -131,6 +214,64 @@ defmodule PinchflatWeb.Media.MediaTableLive do
   def render(assigns) do
     ~H"""
     <div>
+      <nav class="mb-4 flex flex-wrap items-center gap-2 border-b border-stroke pb-3 dark:border-strokedark">
+        <button
+          :for={preset <- TablePresets.all()}
+          type="button"
+          phx-click="select_view"
+          phx-value-slug={preset.slug}
+          class={["rounded-full px-3 py-1 text-sm", view_pill_class(@active_view == preset.slug)]}
+        >
+          {preset.name}
+        </button>
+
+        <span
+          :for={view <- @views}
+          class={[
+            "flex items-center gap-1 rounded-full py-1 pl-3 pr-1.5 text-sm",
+            view_pill_class(@active_view == view.slug)
+          ]}
+        >
+          <button type="button" phx-click="select_view" phx-value-slug={view.slug}>{view.name}</button>
+          <button
+            type="button"
+            phx-click="delete_view"
+            phx-value-id={view.id}
+            data-confirm="Delete this saved view?"
+            title="Delete view"
+            class="opacity-70 hover:opacity-100"
+          >
+            &times;
+          </button>
+        </span>
+
+        <div class="relative ml-auto" x-data="{ open: false }">
+          <button
+            type="button"
+            x-on:click="open = !open"
+            class="flex items-center gap-1 rounded border border-stroke px-3 py-1 text-sm dark:border-strokedark"
+          >
+            <.icon name="hero-bookmark" class="h-4 w-4" /> Save view
+          </button>
+          <form
+            phx-submit="save_view"
+            x-show="open"
+            x-cloak
+            x-on:click.outside="open = false"
+            class="absolute right-0 z-10 mt-1 flex w-64 gap-2 rounded border border-stroke bg-boxdark p-3 shadow-lg dark:border-strokedark"
+          >
+            <input
+              type="text"
+              name="name"
+              required
+              placeholder="Name this view"
+              class="min-w-0 flex-1 rounded border border-stroke bg-transparent px-2 py-1 text-sm dark:border-strokedark dark:bg-meta-4"
+            />
+            <button type="submit" class="rounded bg-primary px-3 py-1 text-sm text-white">Save</button>
+          </form>
+        </div>
+      </nav>
+
       <header class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <span class="flex items-center">
           <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
@@ -323,6 +464,9 @@ defmodule PinchflatWeb.Media.MediaTableLive do
   defp sort_key_for(key) do
     if MediaTableColumns.sort_field(key), do: key, else: nil
   end
+
+  defp view_pill_class(true), do: "bg-primary text-white"
+  defp view_pill_class(false), do: "bg-meta-4 text-bodydark hover:text-white"
 
   defp maybe_date(nil), do: "-"
   defp maybe_date(datetime), do: Calendar.strftime(datetime, "%Y-%m-%d")

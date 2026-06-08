@@ -66,6 +66,32 @@ defmodule PinchflatWeb.Media.MediaTableLiveTest do
     end
   end
 
+  describe "preset + saved views" do
+    test "switching to a preset applies its status filter", %{conn: conn} do
+      source = source_fixture()
+      downloaded = media_item_fixture(%{source_id: source.id})
+      pending = pending_item(source)
+
+      {:ok, view, _html} = live_isolated(conn, MediaTableLive, session: %{"source_id" => source.id})
+
+      html = view |> element("button[phx-value-slug=downloaded]") |> render_click()
+      assert html =~ downloaded.title
+      refute html =~ pending.title
+    end
+
+    test "saving a view persists it and shows it in the switcher", %{conn: conn} do
+      source = source_fixture()
+      pending_item(source)
+
+      {:ok, view, _html} = live_isolated(conn, MediaTableLive, session: %{"source_id" => source.id})
+
+      html = view |> element("form[phx-submit=save_view]") |> render_submit(%{"name" => "My Saved View"})
+      assert html =~ "My Saved View"
+
+      assert Pinchflat.Media.TableViews.list_views("source", source.id) |> Enum.map(& &1.name) == ["My Saved View"]
+    end
+  end
+
   describe "sorting" do
     test "toggles sort direction on a sortable header", %{conn: conn} do
       source = source_fixture()
