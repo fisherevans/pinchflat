@@ -2,6 +2,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   use PinchflatWeb.ConnCase
 
   import Phoenix.LiveViewTest
+  import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
   import Pinchflat.ProfilesFixtures
 
@@ -41,39 +42,38 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       source2 = source_fixture(custom_name: "Source_A")
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
-      assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
-      assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
+      assert render_element(view, ".source-row:first-child") =~ source2.custom_name
+      assert render_element(view, ".source-row:last-child") =~ source1.custom_name
     end
 
-    test "clicking the row will change the sort direction", %{conn: conn} do
+    test "clicking the same column changes the sort direction", %{conn: conn} do
       source1 = source_fixture(custom_name: "Source_B")
       source2 = source_fixture(custom_name: "Source_A")
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      # Click the row to change the sort direction
-      click_element(view, "th", "Name")
+      click_element(view, "button", "Subscription")
 
-      assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
-      assert render_element(view, "tbody tr:last-child") =~ source2.custom_name
+      assert render_element(view, ".source-row:first-child") =~ source1.custom_name
+      assert render_element(view, ".source-row:last-child") =~ source2.custom_name
     end
 
-    test "clicking a different row will sort by that attribute", %{conn: conn} do
-      source1 = source_fixture(custom_name: "Source_A", enabled: true)
-      source2 = source_fixture(custom_name: "Source_A", enabled: false)
+    test "clicking a different column sorts by that attribute", %{conn: conn} do
+      source = source_fixture(custom_name: "Has_Downloads")
+      _other = source_fixture(custom_name: "No_Downloads")
+      # gives `source` the highest downloaded_count
+      media_item_fixture(%{source_id: source.id})
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      # Click the row to change the sort field
-      click_element(view, "th", "Enabled?")
+      # Switch the sort field to Library (downloaded count) - new key sorts ascending,
+      # so the most-downloaded source is last.
+      click_element(view, "button", "Library")
+      assert render_element(view, ".source-row:last-child") =~ source.custom_name
 
-      assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
-      assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
-
-      # Click the row to again change the sort direcation
-      click_element(view, "th", "Enabled?")
-      assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
-      assert render_element(view, "tbody tr:last-child") =~ source2.custom_name
+      # Clicking again flips to descending - most-downloaded first.
+      click_element(view, "button", "Library")
+      assert render_element(view, ".source-row:first-child") =~ source.custom_name
     end
 
     test "name is sorted without case sensitivity", %{conn: conn} do
@@ -82,8 +82,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
-      assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
+      assert render_element(view, ".source-row:first-child") =~ source2.custom_name
+      assert render_element(view, ".source-row:last-child") =~ source1.custom_name
     end
   end
 
@@ -95,13 +95,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       session = Map.merge(create_session(), %{"results_per_page" => 1})
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
 
-      assert render_element(view, "tbody") =~ source1.custom_name
-      refute render_element(view, "tbody") =~ source2.custom_name
+      assert render_element(view, "#source-rows") =~ source1.custom_name
+      refute render_element(view, "#source-rows") =~ source2.custom_name
 
       click_element(view, "span.pagination-next")
 
-      refute render_element(view, "tbody") =~ source1.custom_name
-      assert render_element(view, "tbody") =~ source2.custom_name
+      refute render_element(view, "#source-rows") =~ source1.custom_name
+      assert render_element(view, "#source-rows") =~ source2.custom_name
     end
   end
 
