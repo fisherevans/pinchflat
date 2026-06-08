@@ -79,6 +79,14 @@
         help="Must end with .{{ ext }}. See below for more details. The default is good for most cases (required)"
         x-init="$watch('selectedPreset', p => p && ($el.value = presets[p]))"
       />
+
+      <.input
+        field={f[:season_strategy]}
+        options={friendly_season_strategy_options()}
+        type="select"
+        label="Season organization"
+        help="How the media organizer numbers seasons on disk after download. 'Off' keeps whatever the template produced; the others renumber stably from the upload date (no reshuffle on cull) so Plex/Jellyfin show one tidy list. Applied to existing media via 'Reprocess Media' on a source"
+      />
     </section>
 
     <h3 class="mt-10 text-2xl text-black dark:text-white">

@@ -30,6 +30,7 @@ defmodule Pinchflat.Profiles.MediaProfile do
     preferred_resolution
     media_container
     redownload_delay_days
+    season_strategy
     marked_for_deletion_at
   )a
 
@@ -69,6 +70,11 @@ defmodule Pinchflat.Profiles.MediaProfile do
     field :audio_track, :string
     field :preferred_resolution, Ecto.Enum, values: ~w(4320p 2160p 1440p 1080p 720p 480p 360p audio)a, default: :"1080p"
     field :media_container, :string, default: nil
+
+    # Drives the media organizer's on-disk season/episode numbering. :none keeps the
+    # existing prefix (clean-title rename only); the others renumber stably from the
+    # upload date. See Pinchflat.Organizing.MediaOrganizer.
+    field :season_strategy, Ecto.Enum, values: ~w(none single_season by_year by_month)a, default: :none
 
     field :marked_for_deletion_at, :utc_datetime
 

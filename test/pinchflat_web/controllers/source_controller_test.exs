@@ -12,6 +12,7 @@ defmodule PinchflatWeb.SourceControllerTest do
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
+  alias Pinchflat.Organizing.MediaOrganizeWorker
 
   setup do
     media_profile = media_profile_fixture()
@@ -375,6 +376,37 @@ defmodule PinchflatWeb.SourceControllerTest do
                  "match" => "any",
                  "rules" => [%{"field" => "title", "operator" => "excludes", "value" => "compilation"}]
                }
+    end
+  end
+
+  describe "reprocess_media" do
+    test "enqueues a forced organize for the source", %{conn: conn} do
+      source = source_fixture()
+
+      assert [] = all_enqueued(worker: MediaOrganizeWorker)
+      conn = post(conn, ~p"/sources/#{source.id}/reprocess_media")
+      assert redirected_to(conn) == ~p"/sources/#{source.id}"
+      assert [%{args: %{"id" => _, "force" => true}}] = all_enqueued(worker: MediaOrganizeWorker)
+    end
+  end
+
+  describe "title_clean_preview" do
+    test "returns original -> cleaned pairs for the source's media", %{conn: conn} do
+      source = source_fixture(%{custom_name: "Danny Go"})
+
+      media_item_fixture(%{
+        source_id: source.id,
+        title: "Magnet MANIA!",
+        original_title: "Magnet MANIA! | Danny Go!"
+      })
+
+      conn = get(conn, ~p"/sources/#{source.id}/title_clean_preview?#{[aliases: ["Danny Go"]]}")
+      body = json_response(conn, 200)
+
+      assert body["total"] == 1
+
+      assert [%{"original" => "Magnet MANIA! | Danny Go!", "cleaned" => "Magnet MANIA", "changed" => true}] =
+               body["items"]
     end
   end
 

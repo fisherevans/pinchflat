@@ -22,6 +22,15 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileHTML do
     ]
   end
 
+  def friendly_season_strategy_options do
+    [
+      {"Off - keep the template's layout (default)", :none},
+      {"Single flat season (s01e by date)", :single_season},
+      {"One season per year (sYYYYe by date)", :by_year},
+      {"One season per month", :by_month}
+    ]
+  end
+
   def friendly_resolution_options do
     [
       {"8k", "4320p"},

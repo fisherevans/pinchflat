@@ -15,6 +15,8 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Media
   alias Pinchflat.Media.FileSyncing
   alias Pinchflat.Downloading.MediaDownloader
+  alias Pinchflat.Organizing.MediaOrganizer
+  alias Pinchflat.Organizing.MediaOrganizeWorker
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
 
@@ -102,6 +104,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
         :ok = FileSyncing.delete_outdated_files(media_item, updated_media_item)
         run_user_script(:media_downloaded, updated_media_item)
+        maybe_organize(updated_media_item)
 
         :ok
 
@@ -113,6 +116,16 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
       {:error, _error_atom, message} ->
         action_on_error(message)
+    end
+  end
+
+  # Reconcile the source's on-disk layout (clean titles + season strategy) after a
+  # download, but only for sources that opted in. Enqueued + deduped per source.
+  defp maybe_organize(media_item) do
+    source = Repo.preload(media_item, :source).source
+
+    if MediaOrganizer.organizing_enabled?(source) do
+      MediaOrganizeWorker.kickoff_with_task(source)
     end
   end
 

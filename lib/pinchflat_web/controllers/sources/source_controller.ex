@@ -13,6 +13,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Metadata.TitleCleaner
+  alias Pinchflat.Organizing.MediaOrganizeWorker
   alias Pinchflat.Downloading.RetentionPolicy
   alias Pinchflat.Downloading.RetentionEviction
   alias Pinchflat.Downloading.DownloadingHelpers
@@ -360,6 +361,15 @@ defmodule PinchflatWeb.Sources.SourceController do
       id,
       "Metadata reindex enqueued. This refreshes the whole collection without downloading.",
       &SlowIndexingHelpers.kickoff_indexing_task(&1, %{force: true, download: false})
+    )
+  end
+
+  def reprocess_media(conn, %{"source_id" => id}) do
+    wrap_forced_action(
+      conn,
+      id,
+      "Reprocessing media: re-applying title cleaning and the season layout to downloaded items.",
+      &MediaOrganizeWorker.kickoff_with_task(&1, %{force: true})
     )
   end
 
