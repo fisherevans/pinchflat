@@ -40,7 +40,7 @@
       >
         Library <span :if={@sort_key == :downloaded_count}>{if @sort_direction == :asc, do: "↑", else: "↓"}</span>
       </button>
-      <div>Recent downloads</div>
+      <div>Library by upload date</div>
       <div>This week</div>
       <div></div>
     </div>
@@ -82,8 +82,8 @@
         </div>
 
         <div>
-          <.line_sparkline values={source.download_sparkline} />
-          <div class="mt-1.5 text-[11px] text-bodydark2">downloads &middot; last year</div>
+          <.sparkline values={source.upload_sparkline} height="30px" />
+          <div class="mt-1.5 text-[11px] text-bodydark2">kept &middot; by upload date &middot; last year</div>
         </div>
 
         <div><.change_badge new={source.recent_downloaded_count} culled={source.recent_culled_count} /></div>

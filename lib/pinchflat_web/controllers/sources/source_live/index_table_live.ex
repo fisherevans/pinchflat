@@ -78,7 +78,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     sources =
       Enum.map(
         sources,
-        &Map.put(&1, :download_sparkline, Map.get(sparklines, &1.id, List.duplicate(0, @sparkline_weeks)))
+        &Map.put(&1, :upload_sparkline, Map.get(sparklines, &1.id, List.duplicate(0, @sparkline_weeks)))
       )
 
     assign(socket, %{sources: sources})
@@ -142,9 +142,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       }
   end
 
-  # Builds a per-source list of weekly download counts for the last @sparkline_weeks weeks,
-  # oldest first. Computed in Elixir from raw download timestamps so we avoid fragile
-  # week-number SQL.
+  # Builds a per-source weekly histogram of the *upload dates* of the source's downloaded
+  # media over the last @sparkline_weeks weeks, oldest first. This shows the shape of the
+  # library you actually keep - a gap at the recent end means the channel went quiet or your
+  # filters stopped matching, regardless of when the downloads happened to run.
   defp sparklines_for([]), do: %{}
 
   defp sparklines_for(source_ids) do
@@ -152,8 +153,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
     rows =
       from(m in MediaItem,
-        select: {m.source_id, m.media_downloaded_at},
-        where: m.source_id in ^source_ids and not is_nil(m.media_downloaded_at) and m.media_downloaded_at >= ^cutoff
+        select: {m.source_id, m.uploaded_at},
+        where:
+          m.source_id in ^source_ids and not is_nil(m.media_filepath) and not is_nil(m.uploaded_at) and
+            m.uploaded_at >= ^cutoff
       )
       |> Repo.all()
 

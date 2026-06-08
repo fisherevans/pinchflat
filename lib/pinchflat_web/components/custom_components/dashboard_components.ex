@@ -79,8 +79,8 @@ defmodule PinchflatWeb.CustomComponents.DashboardComponents do
     """
   end
 
-  defp bar_pct(0, _max), do: 6
-  defp bar_pct(v, max), do: max(10, round(v / max * 100))
+  defp bar_pct(0, _max), do: 0
+  defp bar_pct(v, max), do: max(12, round(v / max * 100))
 
   @doc """
   A line sparkline (with a soft area fill) - better than bars for dense series
