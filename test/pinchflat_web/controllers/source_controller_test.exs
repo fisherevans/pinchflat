@@ -324,6 +324,32 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "filter_breakdown" do
+    test "returns the in/out split with titles and cadence", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, title: "Keep Me", uploaded_at: ~U[2024-01-01 00:00:00Z]})
+      media_item_fixture(%{source_id: source.id, title: "Drop Compilation", uploaded_at: ~U[2024-01-02 00:00:00Z]})
+
+      conn = get(conn, ~p"/sources/#{source.id}/filter_breakdown?#{[title_exclude_regex: "(?i)compilation"]}")
+      body = json_response(conn, 200)
+
+      assert body["total"] == 2
+      assert body["matched"] == 1
+      assert body["excluded"] == 1
+      assert "Drop Compilation" in body["excluded_titles"]
+      assert "Keep Me" in body["matched_titles"]
+      assert [%{"month" => "2024-01", "matched" => 1, "excluded" => 1}] = body["cadence"]
+    end
+
+    test "returns an error flag for an invalid pattern", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, title: "x"})
+
+      conn = get(conn, ~p"/sources/#{source.id}/filter_breakdown?#{[title_exclude_regex: "(unclosed"]}")
+      assert %{"error" => true} = json_response(conn, 200)
+    end
+  end
+
   describe "force_metadata_refresh" do
     test "forces a metadata refresh", %{conn: conn} do
       source = source_fixture()

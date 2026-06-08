@@ -278,39 +278,62 @@
         Tread carefully
       </p>
 
-      <% filter_preview_url =
-        if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/filter_preview", else: "" %>
+      <% filter_breakdown_url =
+        if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/filter_breakdown", else: "" %>
       <section
+        class="mt-6"
+        data-config={filter_config_json(f[:filter_config].value)}
         x-data={
           """
           {
-            url: '#{filter_preview_url}',
+            url: '#{filter_breakdown_url}',
+            match: 'all',
+            rules: [],
             loaded: false,
             error: false,
-            summary: '',
+            bd: { total: 0, matched: 0, excluded: 0, cadence: [], matched_titles: [], excluded_titles: [] },
+            init() {
+              try {
+                const cfg = JSON.parse(this.$el.dataset.config || '{}');
+                this.match = cfg.match || 'all';
+                this.rules = Array.isArray(cfg.rules) ? cfg.rules : [];
+              } catch (e) {}
+              this.$watch('rules', () => this.refresh());
+              this.$watch('match', () => this.refresh());
+              this.refresh();
+            },
+            addRule() { this.rules.push({ field: 'title', operator: 'excludes', value: '' }); },
+            removeRule(i) { this.rules.splice(i, 1); },
+            configJson() { return JSON.stringify({ match: this.match, rules: this.rules }); },
+            maxMonth() { let m = 0; for (const b of this.bd.cadence) { const t = b.matched + b.excluded; if (t > m) m = t; } return m || 1; },
+            barStyle(b) { const t = b.matched + b.excluded; const h = t ? Math.max(3, (t / this.maxMonth()) * 100) : 0; return 'height:' + h + '%'; },
+            segStyle(part, b) { const t = b.matched + b.excluded; const h = t ? (b[part] / t) * 100 : 0; const col = part === 'excluded' ? '#e5534b' : '#3fb950'; return 'height:' + h + '%;background:' + col; },
             async refresh() {
               if (!this.url) return;
               const q = new URLSearchParams({
                 title_filter_regex: document.getElementById('source_title_filter_regex')?.value || '',
-                title_exclude_regex: document.getElementById('source_title_exclude_regex')?.value || ''
+                title_exclude_regex: document.getElementById('source_title_exclude_regex')?.value || '',
+                config: this.configJson()
               });
               try {
                 const res = await fetch(this.url + '?' + q.toString());
                 if (!res.ok) { this.error = true; this.loaded = true; return; }
                 const d = await res.json();
                 if (d.error) { this.error = true; this.loaded = true; return; }
-                this.error = false;
-                this.summary = d.matched + ' of ' + d.total + ' indexed videos match (' + d.excluded + ' excluded)';
-                this.loaded = true;
+                this.error = false; this.bd = d; this.loaded = true;
               } catch (e) { this.error = true; this.loaded = true; }
             }
           }
           """
         }
-        x-init="refresh()"
         x-on:input.debounce.400ms="refresh()"
         x-on:change="refresh()"
       >
+        <h3 class="mt-8 text-2xl text-black dark:text-white">Filtering</h3>
+        <p class="text-sm mt-2 mb-3 opacity-70">
+          Decide which videos get downloaded. The title regexes and the rules below all apply together; the live preview shows exactly what is in vs out.
+        </p>
+
         <.input
           field={f[:title_filter_regex]}
           type="text"
@@ -329,70 +352,7 @@
           html_help={true}
         />
 
-        <div
-          x-show="loaded"
-          x-cloak
-          class="mt-2 rounded-md border border-stroke px-4 py-3 text-sm font-medium dark:border-strokedark dark:bg-meta-4"
-        >
-          <span x-show="!error" x-text="summary"></span>
-          <span x-show="error" class="text-meta-1">Invalid regex</span>
-        </div>
-      </section>
-
-      <% rules_preview_url =
-        if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/rules_preview", else: "" %>
-      <section
-        class="mt-6"
-        data-config={filter_config_json(f[:filter_config].value)}
-        x-data={
-          """
-          {
-            match: 'all',
-            rules: [],
-            previewUrl: '#{rules_preview_url}',
-            preview: '',
-            previewError: false,
-            loaded: false,
-            init() {
-              try {
-                const cfg = JSON.parse(this.$el.dataset.config || '{}');
-                this.match = cfg.match || 'all';
-                this.rules = Array.isArray(cfg.rules) ? cfg.rules : [];
-              } catch (e) {}
-              this.$watch('rules', () => this.refresh());
-              this.$watch('match', () => this.refresh());
-              this.refresh();
-            },
-            addRule() { this.rules.push({ field: 'title', operator: 'excludes', value: '' }); },
-            removeRule(i) { this.rules.splice(i, 1); },
-            operatorsFor(field) {
-              return field === 'duration'
-                ? [['longer_than', 'longer than (sec)'], ['shorter_than', 'shorter than (sec)']]
-                : [['contains', 'contains'], ['excludes', 'excludes']];
-            },
-            json() { return JSON.stringify({ match: this.match, rules: this.rules }); },
-            async refresh() {
-              if (!this.previewUrl) return;
-              try {
-                const res = await fetch(this.previewUrl + '?config=' + encodeURIComponent(this.json()));
-                if (!res.ok) { this.previewError = true; this.loaded = true; return; }
-                const d = await res.json();
-                if (d.error) { this.previewError = true; this.loaded = true; return; }
-                this.previewError = false;
-                this.preview = d.matched + ' of ' + d.total + ' indexed videos match (' + d.excluded + ' excluded)';
-                this.loaded = true;
-              } catch (e) { this.previewError = true; this.loaded = true; }
-            }
-          }
-          """
-        }
-      >
-        <h3 class="mt-8 text-2xl text-black dark:text-white">Filter Rules</h3>
-        <p class="text-sm mt-2 mb-3 opacity-70">
-          Only media matching these rules is downloaded. A more structured alternative to the regexes above (they all apply together).
-        </p>
-
-        <div class="flex items-center gap-2 mb-3 text-sm">
+        <div class="mt-4 mb-3 flex items-center gap-2 text-sm">
           <span>Match</span>
           <select
             x-model="match"
@@ -405,10 +365,10 @@
         </div>
 
         <template x-for="(rule, i) in rules" x-bind:key="i">
-          <div class="flex flex-wrap gap-2 mb-2 items-center">
+          <div class="mb-2 flex flex-wrap items-center gap-2">
             <select
               x-model="rule.field"
-              x-on:change="rule.operator = operatorsFor(rule.field)[0][0]"
+              x-on:change="rule.operator = rule.field === 'duration' ? 'longer_than' : 'excludes'"
               class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
             >
               <option value="title">Title</option>
@@ -436,12 +396,12 @@
               type="text"
               x-model="rule.value"
               x-bind:placeholder="rule.field === 'duration' ? 'seconds' : 'regex e.g. (?i)compilation'"
-              class="flex-1 min-w-40 rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
+              class="min-w-40 flex-1 rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
             />
             <button
               type="button"
               x-on:click="removeRule(i)"
-              class="px-2.5 py-1.5 rounded border border-stroke hover:text-meta-1 dark:border-strokedark"
+              class="rounded border border-stroke px-2.5 py-1.5 hover:text-meta-1 dark:border-strokedark"
               title="Remove rule"
             >
               &times;
@@ -453,15 +413,81 @@
           + Add rule
         </button>
 
-        <input type="hidden" name="source[filter_config_json]" x-bind:value="json()" />
+        <input type="hidden" name="source[filter_config_json]" x-bind:value="configJson()" />
 
-        <div
-          x-show="loaded"
-          x-cloak
-          class="mt-3 rounded-md border border-stroke px-4 py-3 text-sm font-medium dark:border-strokedark dark:bg-meta-4"
-        >
-          <span x-show="!previewError" x-text="preview"></span>
-          <span x-show="previewError" class="text-meta-1">Invalid rule pattern</span>
+        <div x-show="error" x-cloak class="mt-4 text-sm text-meta-1">
+          Invalid filter pattern - fix the regex to see the preview
+        </div>
+
+        <div x-show="loaded && !error" x-cloak class="mt-5">
+          <div class="mb-2 flex items-baseline gap-3 text-sm">
+            <span class="font-semibold">Live preview</span>
+            <span><span class="font-bold" style="color:#3fb950" x-text="bd.matched"></span> downloading</span>
+            <span><span class="font-bold" style="color:#e5534b" x-text="bd.excluded"></span> filtered out</span>
+            <span class="opacity-60">of <span x-text="bd.total"></span></span>
+          </div>
+
+          <div class="flex h-28 items-end gap-px overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
+            <template x-for="(b, i) in bd.cadence" x-bind:key="i">
+              <div
+                class="flex w-1.5 shrink-0 flex-col justify-end"
+                x-bind:style="barStyle(b)"
+                x-bind:title="b.month + ': ' + b.matched + ' in, ' + b.excluded + ' out'"
+              >
+                <div class="rounded-t-sm" x-bind:style="segStyle('excluded', b)"></div>
+                <div x-bind:style="segStyle('matched', b)"></div>
+              </div>
+            </template>
+          </div>
+          <div class="mt-1 flex justify-between text-xs opacity-70" x-show="bd.cadence.length">
+            <span x-text="bd.cadence[0] && bd.cadence[0].month"></span>
+            <span x-text="bd.cadence.length && bd.cadence[bd.cadence.length - 1].month"></span>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <div class="mb-1 text-xs font-bold" style="color:#3fb950">
+                Will download (<span x-text="bd.matched"></span>)
+              </div>
+              <ul class="max-h-48 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
+                <template x-for="(t, i) in bd.matched_titles" x-bind:key="i">
+                  <li
+                    class="truncate border-b border-stroke px-2 py-1 dark:border-strokedark"
+                    x-text="t"
+                    x-bind:title="t"
+                  >
+                  </li>
+                </template>
+              </ul>
+              <p
+                class="mt-1 text-xs opacity-60"
+                x-show="bd.matched > bd.matched_titles.length"
+                x-text="'+ ' + (bd.matched - bd.matched_titles.length) + ' more'"
+              >
+              </p>
+            </div>
+            <div>
+              <div class="mb-1 text-xs font-bold" style="color:#e5534b">
+                Filtered out (<span x-text="bd.excluded"></span>)
+              </div>
+              <ul class="max-h-48 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
+                <template x-for="(t, i) in bd.excluded_titles" x-bind:key="i">
+                  <li
+                    class="truncate border-b border-stroke px-2 py-1 dark:border-strokedark"
+                    x-text="t"
+                    x-bind:title="t"
+                  >
+                  </li>
+                </template>
+              </ul>
+              <p
+                class="mt-1 text-xs opacity-60"
+                x-show="bd.excluded > bd.excluded_titles.length"
+                x-text="'+ ' + (bd.excluded - bd.excluded_titles.length) + ' more'"
+              >
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 

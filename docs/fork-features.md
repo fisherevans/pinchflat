@@ -87,12 +87,6 @@ Inverse of the existing `title_filter_regex` (which only includes): media whose 
 - **Use it:** source form (advanced) → Title Exclude Regex.
 - **How:** `MediaQuery.does_not_match_source_exclude_regex/0` in `pending` (negated `regexp_like`). Both regex fields share `validate_regex_field/2` on the changeset.
 
-### Live filter preview
-
-On the source form, a line shows "X of Y indexed videos match (Z excluded)" computed live against the source's real indexed media as you edit the include/exclude patterns. A half-typed or invalid regex shows "Invalid regex" instead of crashing.
-
-- **How:** `GET /sources/:id/filter_preview` runs the include/exclude patterns against the source's `media_items` and returns match counts; invalid patterns are probed first and return `{error: true}`. Same Alpine-fetch pattern as the retention preview (no `Accept: application/json` header).
-
 ### Structured filter rule builder
 
 A multi-rule filter on the source form: build a list of rules and combine them with **all** (AND) or **any** (OR). Each rule is `field` + `operator` + `value`:
@@ -100,12 +94,22 @@ A multi-rule filter on the source form: build a list of rules and combine them w
 - title `contains` / `excludes` a regex
 - duration `longer than` / `shorter than` N seconds
 
-A live preview shows "X of Y indexed videos match (Z excluded)" as you edit, with an "Invalid rule pattern" state for a bad regex. Only matching media is downloaded; rules compose with the single title regexes above.
+Only matching media is downloaded; rules compose with the single title regexes above.
 
-- **Use it:** source form (advanced) → Filter Rules → Add rule.
-- **How:** rules are stored on `source.filter_config` (`%{"match", "rules"}` JSON) and compiled by `Pinchflat.Media.FilterRules` into a composable Ecto predicate applied in `list_pending_media_items_for` / `pending_download?`. The UI is Alpine-managed (rules array serialized to a hidden `filter_config_json` field, parsed in the controller). `GET /sources/:id/rules_preview` powers the live preview.
+- **Use it:** source form (advanced) → Filtering → Add rule.
+- **How:** rules are stored on `source.filter_config` (`%{"match", "rules"}` JSON) and compiled by `Pinchflat.Media.FilterRules` into a composable Ecto predicate applied in `list_pending_media_items_for` / `pending_download?`. The UI is Alpine-managed (rules array serialized to a hidden `filter_config_json` field, parsed in the controller).
 - **Impl note:** operator selects use `x-if` with static `<option>`s rather than `x-for`-generated options, because Alpine's `x-model` + `x-for` options race resets the select to the first option on load. Caught by screenshotting.
+
+### Live filter feedback (stacked histogram + title lists)
+
+The title regexes and the rule builder share one **Filtering** panel with a live, comprehensive preview that updates as you edit any filter:
+
+- A per-month **stacked bar histogram** - green = videos that would download, red = filtered out - so you see the in/out split over the channel's lifetime at a glance.
+- Two **scrollable lists of the actual video titles**, "Will download (N)" and "Filtered out (N)", capped at 250 each.
+- A summary line: "N downloading / M filtered out of T".
+
+- **How:** `GET /sources/:id/filter_breakdown` runs all the content filters (include regex, exclude regex, and the rule config) against the source's `media_items` via `Media.filter_breakdown/4`, returning per-month matched/excluded counts plus the title lists. Invalid patterns return `{error: true}` (shown as an inline error). The whole panel is one Alpine scope so a change to any filter input re-fetches.
 
 ### Deferred
 
-The "would download / keep / delete" three-way preview and in-list live highlighting are still ahead, as are more rule fields (date, short/livestream flags) and nested AND/OR groups.
+In-list live highlighting on the main media tables, more rule fields (date, short/livestream flags), and nested AND/OR groups are still ahead. The older `filter_preview` / `rules_preview` count endpoints remain but the UI now uses the richer `filter_breakdown`.

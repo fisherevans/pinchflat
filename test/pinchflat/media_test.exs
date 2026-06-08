@@ -218,6 +218,43 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "filter_breakdown/4" do
+    test "splits media into matched and excluded with cadence and titles" do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, title: "Science Now", uploaded_at: ~U[2024-01-10 00:00:00Z]})
+      media_item_fixture(%{source_id: source.id, title: "Best Compilation", uploaded_at: ~U[2024-01-20 00:00:00Z]})
+      media_item_fixture(%{source_id: source.id, title: "Cooking", uploaded_at: ~U[2024-02-05 00:00:00Z]})
+
+      config = %{
+        "match" => "all",
+        "rules" => [%{"field" => "title", "operator" => "excludes", "value" => "(?i)compilation"}]
+      }
+
+      result = Media.filter_breakdown(source, nil, nil, config)
+
+      assert result.total == 3
+      assert result.matched == 2
+      assert result.excluded == 1
+      assert "Best Compilation" in result.excluded_titles
+      assert "Science Now" in result.matched_titles
+
+      assert result.cadence == [
+               %{month: "2024-01", matched: 1, excluded: 1},
+               %{month: "2024-02", matched: 1, excluded: 0}
+             ]
+    end
+
+    test "applies an include regex" do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, title: "How to Bike", uploaded_at: ~U[2024-01-10 00:00:00Z]})
+      media_item_fixture(%{source_id: source.id, title: "How to Swim", uploaded_at: ~U[2024-01-11 00:00:00Z]})
+
+      result = Media.filter_breakdown(source, "(?i)bike", nil, %{})
+      assert result.matched == 1
+      assert result.matched_titles == ["How to Bike"]
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing shorts" do
     test "returns shorts and normal media when shorts_behaviour is :include" do
       source = source_fixture(%{media_profile_id: media_profile_fixture(%{shorts_behaviour: :include}).id})

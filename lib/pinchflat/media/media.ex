@@ -110,6 +110,79 @@ defmodule Pinchflat.Media do
     end
   end
 
+  @doc """
+  Given a source and a set of (unsaved) content filters - an include regex, an exclude
+  regex, and a structured rule config - returns a breakdown of how the source's indexed
+  media splits into matched (would download) vs excluded (filtered out):
+
+    %{
+      total, matched, excluded,
+      cadence: [%{month, matched, excluded}, ...],   # contiguous monthly, for a stacked bar
+      matched_titles: [...], excluded_titles: [...]    # capped lists of real titles
+    }
+
+  Powers the live filter feedback on the source form. Raises on an invalid regex
+  (the caller turns that into an error state).
+  """
+  def filter_breakdown(%Source{} = source, include, exclude, config) do
+    base = from(m in MediaItem, where: m.source_id == ^source.id and not is_nil(m.uploaded_at))
+
+    rows =
+      base
+      |> select([m], %{id: m.id, title: m.title, month: fragment("strftime('%Y-%m', ?)", m.uploaded_at)})
+      |> order_by([m], desc: m.uploaded_at)
+      |> Repo.all()
+
+    matching =
+      base
+      |> filter_regex(include, :include)
+      |> filter_regex(exclude, :exclude)
+      |> FilterRules.apply_rules(%{source | filter_config: config})
+      |> select([m], m.id)
+      |> Repo.all()
+      |> MapSet.new()
+
+    {matched, excluded} = Enum.split_with(rows, &MapSet.member?(matching, &1.id))
+
+    %{
+      total: length(rows),
+      matched: length(matched),
+      excluded: length(excluded),
+      cadence: breakdown_cadence(rows, matching),
+      matched_titles: titles(matched),
+      excluded_titles: titles(excluded)
+    }
+  end
+
+  @breakdown_title_limit 250
+
+  defp titles(rows), do: rows |> Enum.map(& &1.title) |> Enum.take(@breakdown_title_limit)
+
+  defp filter_regex(query, nil, _kind), do: query
+  defp filter_regex(query, "", _kind), do: query
+  defp filter_regex(query, pattern, :include), do: where(query, [m], fragment("regexp_like(?, ?)", m.title, ^pattern))
+
+  defp filter_regex(query, pattern, :exclude),
+    do: where(query, [m], not fragment("regexp_like(?, ?)", m.title, ^pattern))
+
+  defp breakdown_cadence(rows, matching) do
+    by_month = Enum.group_by(rows, & &1.month)
+
+    case by_month |> Map.keys() |> Enum.sort() do
+      [] ->
+        []
+
+      months ->
+        List.first(months)
+        |> months_through(List.last(months))
+        |> Enum.map(fn ym ->
+          items = Map.get(by_month, ym, [])
+          matched = Enum.count(items, &MapSet.member?(matching, &1.id))
+          %{month: ym, matched: matched, excluded: length(items) - matched}
+        end)
+    end
+  end
+
   defp months_through(start_ym, end_ym) do
     {start_y, start_m} = parse_year_month(start_ym)
     {end_y, end_m} = parse_year_month(end_ym)

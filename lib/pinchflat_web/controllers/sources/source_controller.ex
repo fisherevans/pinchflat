@@ -128,6 +128,20 @@ defmodule PinchflatWeb.Sources.SourceController do
     _ -> json(conn, %{error: true})
   end
 
+  # Returns a full breakdown of how the (unsaved) content filters split this source's
+  # indexed media: per-month matched/excluded counts (for a stacked histogram) plus the
+  # actual matched and excluded video titles. Powers the live filter feedback panel.
+  def filter_breakdown(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+    include = blank_to_nil(params["title_filter_regex"])
+    exclude = blank_to_nil(params["title_exclude_regex"])
+    config = parse_filter_config(params["config"])
+
+    json(conn, Media.filter_breakdown(source, include, exclude, config))
+  rescue
+    _ -> json(conn, %{error: true})
+  end
+
   def show(conn, %{"id" => id}) do
     source = Repo.preload(Sources.get_source!(id), :media_profile)
 
