@@ -7,4 +7,7 @@ defmodule Pinchflat.HTTP.HTTPBehaviour do
   @callback get(String.t()) :: {:ok, String.t()} | {:error, String.t()}
   @callback get(String.t(), Keyword.t()) :: {:ok, String.t()} | {:error, String.t()}
   @callback get(String.t(), Keyword.t(), Keyword.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @callback post(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @callback post(String.t(), Keyword.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @callback post(String.t(), Keyword.t(), Keyword.t()) :: {:ok, String.t()} | {:error, String.t()}
 end

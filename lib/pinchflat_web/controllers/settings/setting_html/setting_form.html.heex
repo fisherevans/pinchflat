@@ -66,6 +66,56 @@
     </section>
   </section>
 
+  <section class="mt-8">
+    <section>
+      <h3 class="text-2xl text-black dark:text-white">
+        Media Center Integration
+      </h3>
+
+      <p class="mt-2 max-w-prose text-sm">
+        Trigger a Plex and/or Jellyfin library refresh after Pinchflat reorganizes files or you replace a poster.
+        Leave a server's fields blank to skip it.
+      </p>
+
+      <.input
+        field={f[:plex_url]}
+        placeholder="http://10.0.0.10:32400"
+        type="text"
+        label="Plex URL"
+        inputclass="font-mono text-sm"
+      />
+      <.input
+        field={f[:plex_token]}
+        type="text"
+        label="Plex Token"
+        help="Your X-Plex-Token. See the Plex docs for how to find it"
+        inputclass="font-mono text-sm"
+      />
+      <.input
+        field={f[:plex_library_section]}
+        placeholder="4"
+        type="text"
+        label="Plex Library Section ID"
+        help="The numeric section ID of the library Pinchflat writes to"
+      />
+
+      <.input
+        field={f[:jellyfin_url]}
+        placeholder="http://10.0.0.10:8096"
+        type="text"
+        label="Jellyfin URL"
+        inputclass="font-mono text-sm"
+      />
+      <.input
+        field={f[:jellyfin_token]}
+        type="text"
+        label="Jellyfin API Key"
+        help="A Jellyfin API key (Dashboard -> API Keys). Sent as the MediaBrowser token"
+        inputclass="font-mono text-sm"
+      />
+    </section>
+  </section>
+
   <section class="mt-8" x-show="advancedMode">
     <section>
       <h3 class="text-2xl text-black dark:text-white">

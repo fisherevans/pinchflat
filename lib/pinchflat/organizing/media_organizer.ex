@@ -45,6 +45,7 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
         |> Enum.reject(&is_nil/1)
 
       plans |> Enum.map(&vacate/1) |> Enum.each(&place/1)
+      if plans != [], do: Pinchflat.MediaCenter.refresh_async()
       {:ok, length(plans)}
     else
       {:ok, 0}

@@ -17,7 +17,12 @@ defmodule Pinchflat.Settings.Setting do
     :youtube_api_key,
     :extractor_sleep_interval_seconds,
     :download_throughput_limit,
-    :restrict_filenames
+    :restrict_filenames,
+    :plex_url,
+    :plex_token,
+    :plex_library_section,
+    :jellyfin_url,
+    :jellyfin_token
   ]
 
   @required_fields [
@@ -43,6 +48,14 @@ defmodule Pinchflat.Settings.Setting do
 
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
+
+    # Media-center integration: a library refresh is fired after media is reorganized
+    # or a poster is replaced. Blank values disable the respective server.
+    field :plex_url, :string
+    field :plex_token, :string
+    field :plex_library_section, :string
+    field :jellyfin_url, :string
+    field :jellyfin_token, :string
   end
 
   @doc false
