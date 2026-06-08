@@ -170,5 +170,13 @@ defmodule Pinchflat.Downloading.RetentionPolicyTest do
       src = source(%{keep_count: 1, eviction_strategy: :oldest})
       assert evicted_ids(src, items) == [1]
     end
+
+    test "falls back to :oldest for a nil/unknown strategy instead of crashing" do
+      items = sample_items()
+      src = source(%{keep_count: 2, eviction_strategy: nil})
+
+      # behaves like :oldest - keep the 2 most recent (4, 5), evict the rest
+      assert evicted_ids(src, items) == [1, 2, 3]
+    end
   end
 end

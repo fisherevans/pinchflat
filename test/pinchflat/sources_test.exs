@@ -38,6 +38,33 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "changeset/3 filter_config validation" do
+    test "accepts a valid filter rule pattern" do
+      config = %{
+        "match" => "all",
+        "rules" => [%{"field" => "title", "operator" => "contains", "value" => "(?i)science"}]
+      }
+
+      changeset = Source.changeset(%Source{}, %{filter_config: config}, :initial)
+
+      refute errors_on(changeset)[:filter_config]
+    end
+
+    test "rejects an invalid rule regex so it can never crash the pending query" do
+      config = %{"match" => "all", "rules" => [%{"field" => "title", "operator" => "contains", "value" => "(unclosed"}]}
+      changeset = Source.changeset(%Source{}, %{filter_config: config}, :initial)
+
+      assert "contains an invalid filter rule pattern" in errors_on(changeset).filter_config
+    end
+
+    test "does not flag non-regex (duration) rules" do
+      config = %{"match" => "all", "rules" => [%{"field" => "duration", "operator" => "longer_than", "value" => "60"}]}
+      changeset = Source.changeset(%Source{}, %{filter_config: config}, :initial)
+
+      refute errors_on(changeset)[:filter_config]
+    end
+  end
+
   describe "output_path_template/1" do
     test "returns the source's override if present" do
       source = source_fixture(%{output_path_template_override: "/override/{{ title }}.{{ ext }}"})

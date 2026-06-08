@@ -146,6 +146,7 @@ defmodule Pinchflat.Sources.Source do
     |> validate_required(required_fields)
     |> validate_regex_field(:title_filter_regex)
     |> validate_regex_field(:title_exclude_regex)
+    |> validate_filter_config()
     |> validate_min_and_max_durations()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     |> validate_number(:keep_count, greater_than_or_equal_to: 0)
@@ -199,6 +200,31 @@ defmodule Pinchflat.Sources.Source do
         changeset
     end
   end
+
+  # The structured filter rules compile to `regexp_like(...)` against media titles
+  # and descriptions. An invalid pattern would raise mid-query and crash every
+  # `list_pending_media_items_for`/`pending_download?` call, so reject it at save time -
+  # the same probe used for the standalone regex fields.
+  defp validate_filter_config(changeset) do
+    case get_change(changeset, :filter_config) do
+      %{"rules" => rules} when is_list(rules) ->
+        if Enum.all?(rules, &valid_filter_rule?/1) do
+          changeset
+        else
+          add_error(changeset, :filter_config, "contains an invalid filter rule pattern")
+        end
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp valid_filter_rule?(%{"field" => field, "value" => value})
+       when field in ["title", "description"] and is_binary(value) and value != "" do
+    match?({:ok, _}, Ecto.Adapters.SQL.query(Repo, "SELECT regexp_like('', ?)", [value]))
+  end
+
+  defp valid_filter_rule?(_rule), do: true
 
   defp validate_min_and_max_durations(changeset) do
     min_duration = get_change(changeset, :min_duration_seconds)

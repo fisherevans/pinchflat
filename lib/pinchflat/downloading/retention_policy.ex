@@ -94,6 +94,9 @@ defmodule Pinchflat.Downloading.RetentionPolicy do
   defp do_sort(items, :newest), do: Enum.sort_by(items, &uploaded_key/1, :asc)
   defp do_sort(items, :shortest), do: Enum.sort_by(items, &duration_key/1, :desc)
   defp do_sort(items, :longest), do: Enum.sort_by(items, &duration_key/1, :asc)
+  # Defensive: a nil/unknown strategy (e.g. a row that predates the column default)
+  # falls back to :oldest rather than crashing the retention worker.
+  defp do_sort(items, _strategy), do: do_sort(items, :oldest)
 
   defp downloaded?(media_item), do: not is_nil(media_item.media_filepath)
 

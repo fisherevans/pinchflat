@@ -128,6 +128,40 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = put(conn, ~p"/sources/#{source}", source: invalid_attrs)
       assert html_response(conn, 200) =~ "Editing \"#{source.custom_name}\""
     end
+
+    test "normalizes the budget, duration, date, and filter params on update", %{conn: conn, source: source} do
+      attrs = %{
+        keep_gigabytes: "2.5",
+        keep_count: "10",
+        eviction_strategy: "shortest",
+        max_delete_percent: "25",
+        min_duration_seconds: "60",
+        max_duration_seconds: "1800",
+        download_cutoff_date: "2024-01-01",
+        download_end_date: "2024-12-31",
+        retention_period_days: "90",
+        filter_config_json: ~s|{"match":"any","rules":[{"field":"title","operator":"excludes","value":"(?i)live"}]}|
+      }
+
+      put(conn, ~p"/sources/#{source}", source: attrs)
+      updated = Pinchflat.Sources.get_source!(source.id)
+
+      # GB is converted to bytes (1e9), not gibibytes
+      assert updated.keep_bytes == 2_500_000_000
+      assert updated.keep_count == 10
+      assert updated.eviction_strategy == :shortest
+      assert updated.max_delete_percent == 25
+      assert updated.min_duration_seconds == 60
+      assert updated.max_duration_seconds == 1800
+      assert updated.download_cutoff_date == ~D[2024-01-01]
+      assert updated.download_end_date == ~D[2024-12-31]
+      assert updated.retention_period_days == 90
+
+      assert updated.filter_config == %{
+               "match" => "any",
+               "rules" => [%{"field" => "title", "operator" => "excludes", "value" => "(?i)live"}]
+             }
+    end
   end
 
   describe "delete source in all cases" do
