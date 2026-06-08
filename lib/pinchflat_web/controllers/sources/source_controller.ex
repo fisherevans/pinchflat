@@ -12,6 +12,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
+  alias Pinchflat.Metadata.TitleCleaner
   alias Pinchflat.Downloading.RetentionPolicy
   alias Pinchflat.Downloading.RetentionEviction
   alias Pinchflat.Downloading.DownloadingHelpers
@@ -145,6 +146,44 @@ defmodule PinchflatWeb.Sources.SourceController do
     json(conn, Media.filter_breakdown(source, include, exclude, config, opts))
   rescue
     _ -> json(conn, %{error: true})
+  end
+
+  # Returns original -> cleaned title pairs for this source's indexed media under the
+  # given (unsaved) title-cleaning rules, so the edit form can preview the effect live.
+  def title_clean_preview(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+
+    config = %TitleCleaner{
+      show_name: source.custom_name || "",
+      aliases: clean_list(params["aliases"]),
+      extra_strip: clean_list(params["extra_strip"])
+    }
+
+    items =
+      from(m in MediaItem,
+        where: m.source_id == ^source.id and not is_nil(m.uploaded_at),
+        order_by: [desc: m.uploaded_at],
+        select: %{title: m.title, original_title: m.original_title}
+      )
+      |> Repo.all()
+      |> Enum.take(250)
+      |> Enum.map(fn row ->
+        original = row.original_title || row.title
+        cleaned = TitleCleaner.clean_title(original, config)
+        %{original: original, cleaned: cleaned, changed: cleaned != original}
+      end)
+
+    json(conn, %{total: length(items), changed: Enum.count(items, & &1.changed), items: items})
+  rescue
+    _ -> json(conn, %{error: true})
+  end
+
+  defp clean_list(value) do
+    value
+    |> List.wrap()
+    |> Enum.map(&to_string/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 
   # Returns the source's whole prospective library - every indexed item, downloaded or
@@ -361,6 +400,24 @@ defmodule PinchflatWeb.Sources.SourceController do
     params
     |> keep_bytes_from_params()
     |> filter_config_from_params()
+    |> json_list_from_params("title_clean_aliases_json", "title_clean_aliases")
+    |> json_list_from_params("title_clean_extra_strip_json", "title_clean_extra_strip")
+  end
+
+  # The title-clean alias/extra_strip lists are submitted as a JSON array string (same
+  # tactic as filter_config_json) so an emptied list reliably clears the field.
+  defp json_list_from_params(%{} = params, json_key, field_key) do
+    case Map.fetch(params, json_key) do
+      {:ok, json} -> params |> Map.put(field_key, clean_list(parse_json_list(json))) |> Map.delete(json_key)
+      :error -> params
+    end
+  end
+
+  defp parse_json_list(json) do
+    case Phoenix.json_library().decode(to_string(json)) do
+      {:ok, list} when is_list(list) -> list
+      _ -> []
+    end
   end
 
   # The filter rule builder submits its rules as a JSON string in filter_config_json.

@@ -13,6 +13,7 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Media.FilterRules
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Metadata.MediaMetadata
+  alias Pinchflat.Metadata.TitleCleaner
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
 
@@ -354,7 +355,10 @@ defmodule Pinchflat.Media do
   Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}}
   """
   def create_media_item_from_backend_attrs(source, media_attrs_struct) do
-    attrs = Map.merge(%{source_id: source.id}, Map.from_struct(media_attrs_struct))
+    attrs =
+      %{source_id: source.id}
+      |> Map.merge(Map.from_struct(media_attrs_struct))
+      |> apply_title_cleaning(source)
 
     %MediaItem{}
     |> MediaItem.changeset(attrs)
@@ -367,6 +371,25 @@ defmodule Pinchflat.Media do
       ],
       conflict_target: [:source_id, :media_id]
     )
+  end
+
+  # Preserves the raw title/description, and (when the source enables it) overwrites
+  # `title` with the cleaned value so everything downstream uses the clean title.
+  # Description/plot cleaning happens at the NFO-write step, not here, so the stored
+  # description stays full-text for search/feeds/filtering.
+  defp apply_title_cleaning(attrs, source) do
+    original_title = Map.get(attrs, :title)
+
+    attrs =
+      attrs
+      |> Map.put(:original_title, original_title)
+      |> Map.put(:original_description, Map.get(attrs, :description))
+
+    if source.title_clean_enabled && is_binary(original_title) do
+      Map.put(attrs, :title, TitleCleaner.clean_title(original_title, TitleCleaner.config_for(source)))
+    else
+      attrs
+    end
   end
 
   @doc """

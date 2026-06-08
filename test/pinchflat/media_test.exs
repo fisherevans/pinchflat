@@ -965,6 +965,39 @@ defmodule Pinchflat.MediaTest do
       assert media_item.description == media_attrs.description
     end
 
+    test "preserves the original title and stores the cleaned title when enabled" do
+      source = source_fixture(%{title_clean_enabled: true, title_clean_aliases: ["SuperKitties"]})
+
+      raw = "SuperKitties Full Episode | Cat's Pajamas | @disneyjr"
+
+      media_attrs =
+        media_attributes_return_fixture()
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+        |> then(&%YtDlpMedia{&1 | title: raw})
+
+      assert {:ok, %MediaItem{} = media_item} = Media.create_media_item_from_backend_attrs(source, media_attrs)
+
+      assert media_item.original_title == raw
+      assert media_item.title == "Cat's Pajamas"
+    end
+
+    test "stores the raw title unchanged when cleaning is disabled" do
+      source = source_fixture(%{title_clean_enabled: false})
+      raw = "SuperKitties Full Episode | Cat's Pajamas | @disneyjr"
+
+      media_attrs =
+        media_attributes_return_fixture()
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+        |> then(&%YtDlpMedia{&1 | title: raw})
+
+      assert {:ok, %MediaItem{} = media_item} = Media.create_media_item_from_backend_attrs(source, media_attrs)
+
+      assert media_item.title == raw
+      assert media_item.original_title == raw
+    end
+
     test "updates the media item if it already exists" do
       source = source_fixture()
 

@@ -22,8 +22,10 @@ defmodule Pinchflat.Media.MediaItem do
     :playlist_index,
     # these fields are captured on indexing (and again on download)
     :title,
+    :original_title,
     :media_id,
     :description,
+    :original_description,
     :original_url,
     :livestream,
     :source_id,
@@ -66,8 +68,12 @@ defmodule Pinchflat.Media.MediaItem do
     field :uuid, Ecto.UUID
 
     field :title, :string
+    # The effective (cleaned) title/description are in :title/:description; these hold
+    # the raw YouTube values so cleaning can be re-applied when rules change.
+    field :original_title, :string
     field :media_id, :string
     field :description, :string
+    field :original_description, :string
     field :original_url, :string
     field :livestream, :boolean, default: false
     field :short_form_content, :boolean, default: false

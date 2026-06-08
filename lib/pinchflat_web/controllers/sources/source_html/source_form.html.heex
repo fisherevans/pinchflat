@@ -467,7 +467,157 @@
         </section>
       </:tab>
 
-      <%!-- 4. LIMITS: of the viable media, how much to keep --%>
+      <%!-- 4. TITLES: clean clickbait out of titles before they hit files/Plex --%>
+      <:tab title="Titles" id="titles">
+        <p class="mb-5 text-sm text-bodydark">
+          Strip YouTube clickbait (emoji, hashtags, "Full Episode" markers, channel handles, brand tags) from titles
+          so a clean episode name shows in Plex/Jellyfin. The original title is always kept, so you can change these
+          rules and reprocess existing media.
+        </p>
+
+        <.input
+          field={f[:title_clean_enabled]}
+          type="toggle"
+          label="Clean titles for this source"
+          help="When on, new downloads get a cleaned title; the original is preserved. Use Reprocess Media to apply changes to already-downloaded items"
+        />
+
+        <% title_clean_url =
+          if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/title_clean_preview", else: "" %>
+        <section
+          class="mt-5"
+          data-aliases={Phoenix.json_library().encode!(f[:title_clean_aliases].value || [])}
+          data-extra={Phoenix.json_library().encode!(f[:title_clean_extra_strip].value || [])}
+          x-data={
+            """
+            {
+              url: '#{title_clean_url}',
+              aliases: [],
+              extra: [],
+              loaded: false,
+              error: false,
+              bd: { total: 0, changed: 0, items: [] },
+              init() {
+                try { this.aliases = JSON.parse(this.$el.dataset.aliases || '[]'); } catch (e) {}
+                try { this.extra = JSON.parse(this.$el.dataset.extra || '[]'); } catch (e) {}
+                this.$watch('aliases', () => this.refresh());
+                this.$watch('extra', () => this.refresh());
+                this.refresh();
+              },
+              addAlias() { this.aliases.push(''); },
+              removeAlias(i) { this.aliases.splice(i, 1); },
+              addExtra() { this.extra.push(''); },
+              removeExtra(i) { this.extra.splice(i, 1); },
+              aliasesJson() { return JSON.stringify(this.aliases.filter(a => a && a.trim() !== '')); },
+              extraJson() { return JSON.stringify(this.extra.filter(e => e && e.trim() !== '')); },
+              async refresh() {
+                if (!this.url) return;
+                const q = new URLSearchParams();
+                this.aliases.forEach(a => { if (a && a.trim() !== '') q.append('aliases[]', a); });
+                this.extra.forEach(e => { if (e && e.trim() !== '') q.append('extra_strip[]', e); });
+                try {
+                  const res = await fetch(this.url + '?' + q.toString());
+                  if (!res.ok) { this.error = true; this.loaded = true; return; }
+                  const d = await res.json();
+                  if (d.error) { this.error = true; this.loaded = true; return; }
+                  this.error = false; this.bd = d; this.loaded = true;
+                } catch (e) { this.error = true; this.loaded = true; }
+              }
+            }
+            """
+          }
+          x-on:input.debounce.500ms="refresh()"
+        >
+          <div class="mb-2 flex items-center gap-1 text-sm font-semibold text-black dark:text-white">
+            Show-name aliases
+            <.info_tip text="Title-text variants of this show's name (the custom name is always included). Used to strip '{name} Full Episode' phrases without removing a name that legitimately appears in an episode title." />
+          </div>
+          <template x-for="(a, i) in aliases" x-bind:key="i">
+            <div class="mb-2 flex items-center gap-2">
+              <input
+                type="text"
+                x-model="aliases[i]"
+                placeholder="e.g. BeddyByes"
+                class="min-w-40 flex-1 rounded border border-stroke bg-transparent px-3 py-1.5 dark:border-strokedark dark:bg-meta-4"
+              />
+              <button
+                type="button"
+                x-on:click="removeAlias(i)"
+                class="rounded border border-stroke px-2.5 py-1.5 hover:text-meta-1 dark:border-strokedark"
+                title="Remove alias"
+              >
+                &times;
+              </button>
+            </div>
+          </template>
+          <button type="button" x-on:click="addAlias()" class="mb-5 mt-1 text-sm text-primary hover:underline">
+            + Add alias
+          </button>
+
+          <div class="mb-2 flex items-center gap-1 text-sm font-semibold text-black dark:text-white">
+            Extra strip patterns
+            <.info_tip text="Per-channel regexes stripped from every title (e.g. 'Superhero\\s+Cartoons\\s+for\\s+Kids'). Applied case-insensitively, after the global brand/emoji/hashtag strips." />
+          </div>
+          <template x-for="(e, i) in extra" x-bind:key="i">
+            <div class="mb-2 flex items-center gap-2">
+              <input
+                type="text"
+                x-model="extra[i]"
+                placeholder="regex, e.g. Cartoons\\s+for\\s+Kids"
+                class="min-w-40 flex-1 rounded border border-stroke bg-transparent px-3 py-1.5 font-mono dark:border-strokedark dark:bg-meta-4"
+              />
+              <button
+                type="button"
+                x-on:click="removeExtra(i)"
+                class="rounded border border-stroke px-2.5 py-1.5 hover:text-meta-1 dark:border-strokedark"
+                title="Remove pattern"
+              >
+                &times;
+              </button>
+            </div>
+          </template>
+          <button type="button" x-on:click="addExtra()" class="mt-1 text-sm text-primary hover:underline">
+            + Add pattern
+          </button>
+
+          <input type="hidden" name="source[title_clean_aliases_json]" x-bind:value="aliasesJson()" />
+          <input type="hidden" name="source[title_clean_extra_strip_json]" x-bind:value="extraJson()" />
+
+          <div x-show="error" x-cloak class="mt-4 text-sm text-meta-1">
+            Invalid pattern - fix the regex to see the preview
+          </div>
+
+          <div
+            x-show="loaded && !error"
+            x-cloak
+            class="mt-6 rounded-xl border border-stroke p-4 dark:border-strokedark dark:bg-boxdark"
+          >
+            <div class="mb-3 flex flex-wrap items-baseline gap-3 text-sm">
+              <span class="font-mono text-xs font-semibold uppercase tracking-wider text-bodydark2">Live preview</span>
+              <span>
+                <span class="font-bold text-meta-3" x-text="bd.changed"></span>
+                of <span x-text="bd.total"></span>
+                titles change
+              </span>
+            </div>
+            <ul class="max-h-72 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
+              <template x-for="(it, i) in bd.items" x-bind:key="i">
+                <li class="border-b border-stroke px-2 py-1.5 dark:border-strokedark">
+                  <div
+                    class="truncate text-bodydark2"
+                    x-bind:class="it.changed ? 'line-through opacity-60' : 'opacity-40'"
+                    x-text="it.original"
+                  >
+                  </div>
+                  <div class="truncate font-medium text-meta-3" x-show="it.changed" x-text="'→ ' + it.cleaned"></div>
+                </li>
+              </template>
+            </ul>
+          </div>
+        </section>
+      </:tab>
+
+      <%!-- 5. LIMITS: of the viable media, how much to keep --%>
       <:tab title="Limits" id="limits">
         <p class="mb-5 text-sm text-bodydark">
           Of the media that passed Filtering, how much to keep - by time, size, and count. Pinchflat keeps the
