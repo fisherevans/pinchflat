@@ -12,6 +12,8 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Media.FilterRules
   alias Pinchflat.Media.DownloadStatus
+  alias Pinchflat.Media.MediaTableColumns
+  alias Pinchflat.Utils.NumberUtils
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Metadata.MediaMetadata
   alias Pinchflat.Metadata.TitleCleaner
@@ -94,6 +96,130 @@ defmodule Pinchflat.Media do
     |> where(^dynamic(^MediaQuery.for_source(source)))
     |> where([m], not is_nil(m.uploaded_at))
     |> Repo.all()
+  end
+
+  @default_page_size 25
+
+  @doc """
+  The backing query for the unified media table. Filters by source (or all sources when
+  `:source_id` is nil), by persisted `download_status` (a plain indexed column lookup -
+  the payoff of persisting status), and by a free-text FTS search, then sorts (whitelisted
+  columns only) and paginates. Selects only the fields the requested `:columns` need.
+
+  `filters` (all optional): `:source_id`, `:status` ("all"/nil = no status filter),
+  `:search`, `:sort` (`%{key, direction}`), `:page`, `:page_size`, `:columns`.
+
+  Returns `%{records, total, filtered_total, page, page_size, total_pages}` where `total`
+  is the scope+status count (no search) and `filtered_total` includes the search.
+  """
+  def list_media_items(filters) when is_map(filters) do
+    page_size = Map.get(filters, :page_size, @default_page_size)
+    columns = MediaTableColumns.sanitize(Map.get(filters, :columns, MediaTableColumns.default()))
+    search = normalize_table_search(Map.get(filters, :search))
+
+    scoped = scoped_media_query(filters)
+    searched = apply_table_search(scoped, search)
+
+    total = Repo.aggregate(scoped, :count, :id)
+    filtered_total = Repo.aggregate(searched, :count, :id)
+    total_pages = max(ceil(filtered_total / page_size), 1)
+    page = NumberUtils.clamp(Map.get(filters, :page, 1), 1, total_pages)
+
+    records =
+      searched
+      |> select(^MediaTableColumns.select_fields(columns))
+      |> apply_table_sort(Map.get(filters, :sort), search)
+      |> limit(^page_size)
+      |> offset(^((page - 1) * page_size))
+      |> Repo.all()
+      |> maybe_preload_source(columns)
+
+    %{
+      records: records,
+      total: total,
+      filtered_total: filtered_total,
+      page: page,
+      page_size: page_size,
+      total_pages: total_pages
+    }
+  end
+
+  @doc """
+  Per-status counts for a scope (a source, or all sources when nil). Powers the view
+  switcher badges. Returns a map of `download_status => count` (plus `"all"`).
+  """
+  def media_status_counts(source_id \\ nil) do
+    base = scoped_media_query(%{source_id: source_id})
+
+    counts =
+      base
+      |> group_by([m], m.download_status)
+      |> select([m], {m.download_status, count(m.id)})
+      |> Repo.all()
+      |> Map.new()
+
+    Map.put(counts, "all", Enum.sum(Map.values(counts)))
+  end
+
+  defp scoped_media_query(filters) do
+    MediaQuery.new()
+    |> filter_by_source(Map.get(filters, :source_id))
+    |> filter_by_status(Map.get(filters, :status))
+  end
+
+  defp filter_by_source(query, nil), do: query
+  defp filter_by_source(query, source_id), do: where(query, ^MediaQuery.for_source(source_id))
+
+  defp filter_by_status(query, status) when status in [nil, "", "all"], do: query
+  defp filter_by_status(query, status), do: where(query, [m], m.download_status == ^status)
+
+  defp normalize_table_search(search) when is_binary(search) do
+    case String.trim(search) do
+      "" -> nil
+      _ -> search
+    end
+  end
+
+  defp normalize_table_search(_search), do: nil
+
+  defp apply_table_search(query, nil), do: query
+
+  defp apply_table_search(query, search) do
+    query
+    |> MediaQuery.require_assoc(:media_items_search_index)
+    |> where(^MediaQuery.matches_search_term(search))
+  end
+
+  # When searching, rank is always the primary sort (best matches first), with the chosen
+  # column as the tiebreaker - matching the old per-source table's behavior.
+  defp apply_table_sort(query, sort, search) do
+    query = if search, do: order_by(query, ^[{:desc, dynamic([m], fragment("rank"))}]), else: query
+
+    case resolve_table_sort(sort) do
+      {:source, dir} ->
+        query
+        |> MediaQuery.require_assoc(:source)
+        |> order_by(^[{dir, dynamic([source: s], s.custom_name)}])
+
+      {field, dir} ->
+        order_by(query, ^[{dir, dynamic([m], field(m, ^field))}])
+    end
+  end
+
+  defp resolve_table_sort(%{} = sort) when map_size(sort) > 0 do
+    field = MediaTableColumns.sort_field(sort[:key] || sort["key"])
+    dir = normalize_sort_dir(sort[:direction] || sort["direction"])
+
+    if field, do: {field, dir}, else: {:uploaded_at, :desc}
+  end
+
+  defp resolve_table_sort(_sort), do: {:uploaded_at, :desc}
+
+  defp normalize_sort_dir(dir) when dir in [:asc, "asc"], do: :asc
+  defp normalize_sort_dir(_dir), do: :desc
+
+  defp maybe_preload_source(records, columns) do
+    if MediaTableColumns.needs_source?(columns), do: Repo.preload(records, :source), else: records
   end
 
   @doc """
