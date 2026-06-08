@@ -130,10 +130,10 @@ defmodule Pinchflat.Metadata.TitleCleaner do
       raw
       |> normalize()
       |> strip_emojis()
-      |> regex_replace(~r/(?<!\w)#\w+/, "")
+      |> regex_replace(~r/(?<!\w)#\w+/u, "")
       # strip wrapping quote pairs across the whole title before the pipe split
-      |> regex_replace(~r/"([^"]+)"/, "\\1")
-      |> regex_replace(~r/(?<!\w)'([^'\n]+)'(?!\w)/, "\\1")
+      |> regex_replace(~r/"([^"]+)"/u, "\\1")
+      |> regex_replace(~r/(?<!\w)'([^'\n]+)'(?!\w)/u, "\\1")
 
     cleaned =
       s
@@ -145,7 +145,7 @@ defmodule Pinchflat.Metadata.TitleCleaner do
       [] ->
         # Everything stripped - keep an emoji/hashtag-cleaned original rather
         # than synthesizing garbled fragments.
-        fallback = s |> regex_replace(~r/\s+/, " ") |> String.trim() |> String.trim(" -|")
+        fallback = s |> regex_replace(~r/\s+/u, " ") |> String.trim() |> String.trim(" -|")
         if fallback == "", do: String.trim(raw), else: fallback
 
       segments ->
@@ -168,12 +168,12 @@ defmodule Pinchflat.Metadata.TitleCleaner do
     |> strip_patterns(@bare_noise)
     |> strip_extra(cfg.extra_strip)
     |> String.trim()
-    |> regex_replace(~r/^["'`“”‘’]+/, "")
-    |> regex_replace(~r/["'`“”‘’]+$/, "")
-    |> regex_replace(~r/\s+/, " ")
+    |> regex_replace(~r/^["'`“”‘’]+/u, "")
+    |> regex_replace(~r/["'`“”‘’]+$/u, "")
+    |> regex_replace(~r/\s+/u, " ")
     |> String.trim()
-    |> regex_replace(~r/^[\s\-–—!?.,:;|]+/, "")
-    |> regex_replace(~r/[\s\-–—!?.,:;|]+$/, "")
+    |> regex_replace(~r/^[\s\-–—!?.,:;|]+/u, "")
+    |> regex_replace(~r/[\s\-–—!?.,:;|]+$/u, "")
     |> String.trim()
     |> drop_if_bare_alias(aliases)
   end
@@ -223,13 +223,13 @@ defmodule Pinchflat.Metadata.TitleCleaner do
       raw
       |> normalize()
       |> strip_emojis()
-      |> regex_replace(~r/https?:\/\/\S+/i, "")
-      |> regex_replace(~r/(?<!\w)#\w+/, "")
+      |> regex_replace(~r/https?:\/\/\S+/iu, "")
+      |> regex_replace(~r/(?<!\w)#\w+/u, "")
 
     s
     |> cut_at_earliest_keyword()
     |> cut_at_paragraph_break()
-    |> regex_replace(~r/\s+/, " ")
+    |> regex_replace(~r/\s+/u, " ")
     |> String.trim()
     |> truncate(max_len)
   end
@@ -267,9 +267,9 @@ defmodule Pinchflat.Metadata.TitleCleaner do
   def sanitize_filename(title, max_len \\ 180) do
     s =
       title
-      |> regex_replace(~r/[<>:"\/\\|?*\x00-\x1f]/, "-")
-      |> regex_replace(~r/\s*-\s*-\s*/, " - ")
-      |> regex_replace(~r/\s+/, " ")
+      |> regex_replace(~r/[<>:"\/\\|?*\x00-\x1f]/u, "-")
+      |> regex_replace(~r/\s*-\s*-\s*/u, " - ")
+      |> regex_replace(~r/\s+/u, " ")
       |> String.trim(" .-_")
 
     if String.length(s) > max_len do
@@ -303,7 +303,7 @@ defmodule Pinchflat.Metadata.TitleCleaner do
 
   defp regex_replace(subject, regex, replacement), do: Regex.replace(regex, subject, replacement)
 
-  defp compile_i(source), do: Regex.compile!(source, "i")
+  defp compile_i(source), do: Regex.compile!(source, "iu")
 
-  defp safe_compile_i(source), do: Regex.compile(source, "i")
+  defp safe_compile_i(source), do: Regex.compile(source, "iu")
 end

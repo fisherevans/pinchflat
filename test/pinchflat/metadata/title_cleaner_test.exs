@@ -58,6 +58,29 @@ defmodule Pinchflat.Metadata.TitleCleanerTest do
     test "normalizes fullwidth pipes" do
       assert TitleCleaner.clean_title("Disney Jr.｜The Big Race", cfg()) == "The Big Race"
     end
+
+    test "leading punctuation strip on a multibyte char keeps valid utf-8" do
+      # In byte mode the trailing/leading-punctuation class matched the individual
+      # UTF-8 bytes of its literal en/em dashes, so a leading "…" (E2 80 A6) lost
+      # its first two bytes and left a dangling byte - invalid UTF-8 that then
+      # crashed JSON encoding in the live preview. The `u` flag makes the class
+      # codepoint-aware.
+      result = TitleCleaner.clean_title("… and then the dog ran", cfg())
+
+      assert String.valid?(result)
+      assert {:ok, _} = Jason.encode(result)
+    end
+
+    test "strips a hashtag containing multibyte characters as one unit" do
+      # Without `u`, byte-mode `\w` stops at the `é`, leaving a stray "émonjokes"
+      # fragment. Unicode-aware `\w` treats the whole hashtag as one word.
+      result = TitleCleaner.clean_title("Funny Pokémon clip #pokémonjokes #pokejokes", cfg())
+
+      assert String.valid?(result)
+      assert {:ok, _} = Jason.encode(result)
+      refute result =~ "#"
+      assert result == "Funny Pokémon clip"
+    end
   end
 
   describe "clean_plot/2" do
