@@ -15,6 +15,72 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   def source_form(assigns)
 
   @doc """
+  One title-regex field on the filter form: label, an "ignore case" checkbox that
+  manages the leading `(?i)` flag, an Alpine-bound input, and live per-pattern
+  feedback ("N of T titles match", with an expandable sample). Shares the parent
+  filter Alpine scope - `@model` is the scope var ("include"/"exclude"), which is
+  also the key into the `bd` breakdown.
+  """
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :model, :string, required: true
+  attr :label, :string, required: true
+  attr :color, :string, required: true
+  attr :placeholder, :string, default: ""
+
+  def title_regex_field(assigns) do
+    ~H"""
+    <div x-data="{ showTitles: false }">
+      <div class="mb-2 flex items-center justify-between gap-2">
+        <label class="text-sm font-medium text-black dark:text-white" for={@id}>{@label}</label>
+        <label class="flex cursor-pointer items-center gap-1.5 text-xs text-bodydark2">
+          <input type="checkbox" class="rounded" x-bind:checked={"ciOn('#{@model}')"} x-on:change={"toggleCi('#{@model}')"} />
+          ignore case
+        </label>
+      </div>
+      <input
+        type="text"
+        id={@id}
+        name={@name}
+        x-model={@model}
+        placeholder={@placeholder}
+        class={[
+          "w-full rounded-lg border-[1.5px] border-form-strokedark bg-form-input px-5 py-3 font-mono",
+          "text-white outline-none transition focus:border-primary"
+        ]}
+      />
+      <div x-show={"#{@model} && loaded && !error && bd.#{@model}"} x-cloak class="mt-1.5 flex items-center gap-2 text-xs">
+        <span style={"color:#{@color}"} class="font-semibold" x-text={"bd.#{@model} ? bd.#{@model}.count : 0"}></span>
+        <span class="text-bodydark2" x-text="'of ' + bd.total + ' titles match'"></span>
+        <button
+          type="button"
+          x-show={"bd.#{@model} && bd.#{@model}.count"}
+          x-on:click="showTitles = !showTitles"
+          class="text-primary hover:underline"
+          x-text="showTitles ? 'hide' : 'show'"
+        >
+        </button>
+      </div>
+      <ul
+        x-show={"showTitles && bd.#{@model}"}
+        x-cloak
+        class="mt-1 max-h-40 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark"
+      >
+        <template x-for={"(t, i) in (bd.#{@model} ? bd.#{@model}.titles : [])"} x-bind:key="i">
+          <li
+            class="flex items-center justify-between gap-2 border-b border-stroke px-2 py-1 dark:border-strokedark"
+            x-bind:title="t.title"
+          >
+            <span class="truncate" x-text="t.title"></span>
+            <span class="shrink-0 font-mono text-bodydark2" x-text="fmtDur(t.duration)"></span>
+          </li>
+        </template>
+      </ul>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a source's upload cadence as a month-by-month bar chart. Used on both the
   source overview and the edit form (next to the date window controls).
   """

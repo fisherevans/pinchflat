@@ -163,7 +163,9 @@ defmodule Pinchflat.Media do
       cadence: breakdown_cadence(rows, matching),
       durations: duration_histogram(rows |> Enum.map(& &1.duration) |> Enum.reject(&is_nil/1)),
       matched_titles: titles(matched),
-      excluded_titles: titles(excluded)
+      excluded_titles: titles(excluded),
+      include: field_breakdown(base, include),
+      exclude: field_breakdown(base, exclude)
     }
   end
 
@@ -173,6 +175,23 @@ defmodule Pinchflat.Media do
     rows
     |> Enum.take(@breakdown_title_limit)
     |> Enum.map(&%{title: &1.title, duration: &1.duration})
+  end
+
+  # Per-pattern feedback for a single title regex, independent of the other filters:
+  # how many of the channel's titles match this one pattern, plus a sample of them.
+  # Lets the form show "42 of 300 titles match" right under each regex field.
+  defp field_breakdown(_base, nil), do: nil
+  defp field_breakdown(_base, ""), do: nil
+
+  defp field_breakdown(base, pattern) do
+    rows =
+      base
+      |> where([m], fragment("regexp_like(?, ?)", m.title, ^pattern))
+      |> order_by([m], desc: m.uploaded_at)
+      |> select([m], %{title: m.title, duration: m.duration_seconds})
+      |> Repo.all()
+
+    %{count: length(rows), titles: titles(rows)}
   end
 
   defp filter_regex(query, nil, _kind), do: query

@@ -142,3 +142,13 @@ Restructured from one long scroll into a four-stage workflow using the tab compo
 
 - `GET /sources/:id/filter_breakdown` now also takes `min_duration_seconds`/`max_duration_seconds`, returns a `durations` histogram (`%{axis_max, bin_seconds, bins}`, length distribution capped near the 95th percentile so an outlier livestream doesn't flatten it), and returns the matched/excluded lists as `%{title, duration}` rather than bare strings.
 - `GET /sources/:id/retention_curve` returns the downloaded media's byte sizes ordered most-keepable-first for a given `eviction_strategy`. The form builds the cumulative curve client-side, so the count/size sliders give live GB↔count readouts with one fetch per strategy change instead of a round-trip per drag. Backed by `RetentionPolicy.keep_order/2`.
+
+### Filter/Limits refinements
+
+A second pass tightened both tabs:
+
+- **Duration slider** - histogram sits above the track (not behind it), each thumb's selected time renders directly under the thumb, and the track/thumbs/labels are inset by half a thumb so a handle at the max actually reaches the right axis (the dual-range overlay's thumbs are inset 9px; the chart and labels share that inset via `mx-[9px]` so everything lines up).
+- **Title regexes** - each field has an "ignore case" checkbox that manages the leading `(?i)` flag, and live per-pattern feedback ("N of T titles match") with an expandable sample list. `filter_breakdown` returns `include`/`exclude` `%{count, titles}` for this, independent of the other filters. The fields are Alpine-bound (`x-model`) and refresh is debounced through the section's bubbled input handler (no fetch-per-keystroke).
+- **Time window** - the cutoff/end dates are now a dual-range slider dragged across the upload-cadence timeline (handle at either end = no bound), with the date text inputs kept in sync.
+- **Capacity sliders** - run past the current library (≈3× headroom) so you can leave room to grow, each with an explicit "no limit" checkbox rather than overloading the max position. Counts/sizes beyond what's downloaded are extrapolated from the average item size and flagged `(est)`. The "keep most recent" label tracks the eviction strategy ("Keep earliest/longest/shortest").
+- Retention period moved into the **Eviction** group next to the strategy, where it belongs conceptually.
