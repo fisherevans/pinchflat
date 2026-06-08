@@ -178,3 +178,21 @@ A second pass tightened both tabs:
 ### Capacity reflects the whole prospective library
 
 The Capacity strip models the entire indexed catalog, not just what's on disk - important for a freshly subscribed source where only a handful of items have downloaded but the count cap gates everything still to come. `retention_curve` returns every indexed item ordered by the eviction strategy, with real byte sizes for downloaded items and a per-item estimate (the average of what's been downloaded, flagged `est`) for the rest. The strip renders kept-downloaded (solid green), kept-estimated (light green), and evicted (red), and the readouts surface "N downloaded so far · M of the kept set not downloaded yet (size estimated)". Sizes/counts that extend past what's downloaded are marked `(est)`. Backed by `Media.list_indexed_media_items_for/1`; `RetentionPolicy.keep_order/2` now sorts whatever set it's given (the caller decides downloaded-only vs the full catalog).
+
+## Unified media table
+
+Replaces the four per-source media tabs (Pending / Downloaded / Other / Evictions) with one flexible data table, and exposes the same table globally at `/media` across all sources. The same LiveView (`PinchflatWeb.Media.MediaTableLive`) serves both, parameterized by `source_id` (nil = global).
+
+### Persisted status
+
+There was no stored status before - pending/downloaded/"other"/evicted were derived per request from a stack of predicates, inconsistently (the "other" bucket skipped `FilterRules`), and "why an item wasn't downloaded" was persisted nowhere. Now `media_items.download_status` is a derived-but-persisted column (+ `status_reason`, `status_computed_at`), so the table sorts/filters/paginates on it in SQL. `Pinchflat.Media.DownloadStatus` is the single source of truth; the pending/filtered split runs through `Media.pending_download?/1` (the same `MediaQuery.pending` + `FilterRules` the downloader uses), so the persisted status can't drift from the live logic - a consistency test pins `pending`+`errored` == `list_pending_media_items_for/1`.
+
+Closed status set, resolved by precedence: `downloaded` → `culled` (files deleted by retention; reason sub-types `evicted_budget` / `culled_cutoff` / `culled_retention`) → `ignored` (user prevent_download) → `pending` → `errored` (eligible but last attempt failed) → `filtered` (excluded by a gate; reason names it: title/duration/cutoff/format/cap/rule). Recompute is hooked into the lifecycle choke points (`create_media_item*`, `update_media_item`), the retention worker writes a denormalized `last_evicted_at`/`last_bytes_freed` cache, and source-config edits / Reprocess Media enqueue a per-source bulk recompute (`RecomputeDownloadStatusWorker`, `local_data` queue). A post-boot task backfills any rows the migration's fast SQL approximation left provisional.
+
+### The table
+
+Backed by `Media.list_media_items/1` (status filter via the indexed column, free-text FTS search, whitelisted sort, pagination) which selects only the fields the visible columns need (`Pinchflat.Media.MediaTableColumns` is the column registry shared by the query and the LiveView). UI: dynamic columns with a column-picker, sortable headers (reuses the existing `<.table>`), a status dropdown, search, and the existing `media_table` PubSub reload.
+
+### Preset + saved views
+
+`Pinchflat.Media.TablePresets` defines seven built-in views (Pending / Downloaded / Skipped-filtered / Evicted-culled, plus All / Ignored / Errored) - a status filter + column layout + sort. User-saved views persist server-side in `media_table_views` (`Pinchflat.Media.TableViews`), scoped global or per-source, so the same view loads on any device. The switcher shows preset pills then saved-view pills (with delete); "Save view" captures the current status/columns/sort; `?view=<slug>` seeds the initial view so URLs are shareable. The global `/media` page is a server-rendered controller (sidebar/layout) embedding the table with no source.
