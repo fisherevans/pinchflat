@@ -11,7 +11,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Downloading.RetentionEviction
 
-  @sparkline_weeks 12
+  @sparkline_weeks 52
 
   def mount(_params, session, socket) do
     limit = session["results_per_page"]

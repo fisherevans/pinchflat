@@ -82,8 +82,8 @@
         </div>
 
         <div>
-          <.sparkline values={source.download_sparkline} />
-          <div class="mt-1.5 text-[11px] text-bodydark2">last 12 weeks</div>
+          <.line_sparkline values={source.download_sparkline} />
+          <div class="mt-1.5 text-[11px] text-bodydark2">downloads &middot; last year</div>
         </div>
 
         <div><.change_badge new={source.recent_downloaded_count} culled={source.recent_culled_count} /></div>

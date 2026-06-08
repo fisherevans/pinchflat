@@ -83,6 +83,49 @@ defmodule PinchflatWeb.CustomComponents.DashboardComponents do
   defp bar_pct(v, max), do: max(10, round(v / max * 100))
 
   @doc """
+  A line sparkline (with a soft area fill) - better than bars for dense series
+  like a year of weekly activity. `values` is oldest-first; `color` is a hex.
+  """
+  attr :values, :list, required: true
+  attr :color, :string, default: "#3C50E0"
+  attr :width, :integer, default: 220
+  attr :height, :integer, default: 34
+
+  def line_sparkline(assigns) do
+    values = assigns.values
+    count = max(length(values), 1)
+    maxv = Enum.max([1 | values])
+    w = assigns.width
+    h = assigns.height
+
+    points =
+      values
+      |> Enum.with_index()
+      |> Enum.map_join(" ", fn {v, i} ->
+        x = if count > 1, do: i / (count - 1) * w, else: w / 2
+        y = h - 1 - v / maxv * (h - 3)
+        "#{Float.round(x, 1)},#{Float.round(y, 1)}"
+      end)
+
+    assigns = assign(assigns, line: points, area: "0,#{h} #{points} #{w},#{h}", w: w, h: h)
+
+    ~H"""
+    <svg viewBox={"0 0 #{@w} #{@h}"} width="100%" height={@h} preserveAspectRatio="none">
+      <polygon points={@area} fill={@color} fill-opacity="0.14" />
+      <polyline
+        points={@line}
+        fill="none"
+        stroke={@color}
+        stroke-width="1.5"
+        stroke-linejoin="round"
+        stroke-linecap="round"
+        vector-effect="non-scaling-stroke"
+      />
+    </svg>
+    """
+  end
+
+  @doc """
   Recent-change badges: "+N new" (green) and "-N culled" (red), or a quiet marker.
   """
   attr :new, :integer, default: 0
