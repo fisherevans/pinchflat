@@ -78,6 +78,17 @@ defmodule Pinchflat.Media.FilterRules do
     dynamic([m], not fragment("regexp_like(?, ?)", m.title, ^value))
   end
 
+  defp rule_to_dynamic(%{"field" => "description", "operator" => "contains", "value" => value})
+       when is_binary(value) and value != "" do
+    dynamic([m], fragment("regexp_like(?, ?)", m.description, ^value))
+  end
+
+  defp rule_to_dynamic(%{"field" => "description", "operator" => "excludes", "value" => value})
+       when is_binary(value) and value != "" do
+    # A missing description can't match the term, so it passes an "excludes" rule.
+    dynamic([m], is_nil(m.description) or not fragment("regexp_like(?, ?)", m.description, ^value))
+  end
+
   defp rule_to_dynamic(%{"field" => "duration", "operator" => "longer_than", "value" => value}) do
     with_integer(value, fn seconds -> dynamic([m], m.duration_seconds > ^seconds) end)
   end

@@ -1,524 +1,521 @@
-<.simple_form
-  :let={f}
-  for={@changeset}
-  action={@action}
-  method={@method}
-  x-data="{ advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')) }"
-  x-init="$watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)))"
->
+<.simple_form :let={f} for={@changeset} action={@action} method={@method}>
   <.error :if={@changeset.action}>
     Oops, something went wrong! Please check the errors below.
   </.error>
 
   <section x-data="{ mediaProfileId: null }">
-    <section class="flex justify-between items-center mt-4">
-      <h3 class="text-2xl text-white">
-        General Options
-      </h3>
-      <span class="cursor-pointer hover:underline" x-on:click="advancedMode = !advancedMode">
-        Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
-      </span>
-    </section>
+    <.tabbed_layout>
+      <%!-- 1. SOURCE: what to subscribe to and how to store it --%>
+      <:tab title="Source" id="source">
+        <p class="mb-5 text-sm text-bodydark">What channel or playlist this is, and how its files are named.</p>
 
-    <.input
-      field={f[:original_url]}
-      type="text"
-      label="Source URL"
-      help="URL of a channel or playlist (required)"
-      x-init="$el.focus()"
-    />
-
-    <.input
-      field={f[:custom_name]}
-      type="text"
-      label="Custom Name"
-      help="Does not impact indexing or downloading. Will be inferred from the source if left blank"
-    />
-
-    <.input
-      field={f[:media_profile_id]}
-      options={Enum.map(@media_profiles, &{&1.name, &1.id})}
-      type="select"
-      label="Media Profile"
-      help="Sets your preferences for what media to look for and how to store it"
-      x-model.fill="mediaProfileId"
-    />
-
-    <h3 class="mt-8 text-2xl text-black dark:text-white">
-      Indexing Options
-    </h3>
-
-    <section x-data="{ fastIndexingEnabled: null }">
-      <.input
-        field={f[:index_frequency_minutes]}
-        options={friendly_index_frequencies()}
-        type="select"
-        label="Index Frequency"
-        x-bind:disabled="fastIndexingEnabled == true"
-        x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60))"
-        help="Indexing is the process of checking for media to download. For best results, set this to the longest delay you can tolerate for this source"
-      />
-
-      <div phx-click={show_modal("upgrade-modal")}>
         <.input
-          field={f[:fast_index]}
-          type="toggle"
-          label="Use Fast Indexing"
-          label_suffix="(pro)"
-          help="Not recommended for playlists. Overrides 'Index Frequency'. See below for more details (seriously, there's a TL;DR that's worth reading)"
-          x-init="
-          // `enabled` is the data attribute that the toggle uses internally
-          fastIndexingEnabled = enabled
-          $watch('enabled', value => fastIndexingEnabled = !!value)
-        "
+          field={f[:original_url]}
+          type="text"
+          label="Source URL"
+          help="URL of a channel or playlist (required)"
+          x-init="$el.focus()"
         />
-      </div>
-    </section>
 
-    <h3 class="mt-8 text-2xl text-black dark:text-white">
-      Downloading Options
-    </h3>
+        <.input
+          field={f[:custom_name]}
+          type="text"
+          label="Custom Name"
+          help="Does not impact indexing or downloading. Will be inferred from the source if left blank"
+        />
 
-    <.input
-      field={f[:download_media]}
-      type="toggle"
-      label="Download Media"
-      help="Unchecking still indexes media but it won't be downloaded until you enable this option"
-    />
+        <.input
+          field={f[:media_profile_id]}
+          options={Enum.map(@media_profiles, &{&1.name, &1.id})}
+          type="select"
+          label="Media Profile"
+          help="Sets your preferences for what media to look for and how to store it"
+          x-model.fill="mediaProfileId"
+        />
 
-    <.input
-      field={f[:cookie_behaviour]}
-      options={friendly_cookie_behaviours()}
-      type="select"
-      label="Cookie Behaviour"
-      help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
-    />
-
-    <section x-show="advancedMode">
-      <.input
-        field={f[:min_duration_seconds]}
-        type="number"
-        label="Minimum Duration (seconds)"
-        min="0"
-        help="Minimum duration of the media to be downloaded. Can be blank"
-      />
-
-      <.input
-        field={f[:max_duration_seconds]}
-        type="number"
-        label="Maximum Duration (seconds)"
-        min="0"
-        help="Maximum duration of the media to be downloaded. Can be blank"
-      />
-    </section>
-
-    <section x-data={"{ cutoffDate: '#{f[:download_cutoff_date].value}' }"}>
-      <div :if={@cadence != []} class="mb-5">
-        <% max_count = @cadence |> Enum.map(& &1.count) |> Enum.max() %>
-        <h3 class="font-bold text-xl mb-1 mt-6">Upload Cadence</h3>
-        <p class="text-sm mb-3 opacity-70">
-          When this source published, by month. Click a bar to set the download start date - highlighted months are inside the window.
-        </p>
-        <div class="flex items-end gap-px h-32 overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
-          <div
-            :for={bucket <- @cadence}
-            class="w-1.5 shrink-0 cursor-pointer rounded-t-sm hover:opacity-100"
-            style={"height: #{cadence_bar_pct(bucket.count, max_count)}%"}
-            title={"#{bucket.month}: #{bucket.count} uploads (click to start here)"}
-            x-bind:class={"'#{bucket.month}' >= (cutoffDate || '').slice(0,7) ? 'bg-primary' : 'bg-bodydark opacity-40'"}
-            x-on:click={"cutoffDate = '#{bucket.month}-01'"}
-          >
-          </div>
-        </div>
-        <div class="mt-1 flex justify-between text-xs opacity-70">
-          <span>{List.first(@cadence).month}</span>
-          <span>peak {max_count}/mo</span>
-          <span>{List.last(@cadence).month}</span>
-        </div>
-      </div>
-
-      <.input
-        field={f[:download_cutoff_date]}
-        type="text"
-        label="Download Cutoff Date"
-        placeholder="YYYY-MM-DD"
-        maxlength="10"
-        pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
-        title="YYYY-MM-DD"
-        help="Only download media uploaded after this date. Leave blank to download all media. Must be in YYYY-MM-DD format. Old media may be deleted or downloaded if you change this date"
-        x-model="cutoffDate"
-      >
-        <:input_append>
-          <.input
-            prompt="Select preset"
-            name="download_cutoff_date_preset"
-            value=""
-            options={cutoff_date_presets()}
-            type="select"
-            inputclass="w-30 lg:w-60 ml-2 md:ml-4"
-            x-on:change={"cutoffDate = $event.target.value || '#{f[:download_cutoff_date].value}'"}
-          />
-        </:input_append>
-      </.input>
-    </section>
-
-    <section x-show="advancedMode">
-      <.input
-        field={f[:download_end_date]}
-        type="text"
-        label="Download End Date"
-        placeholder="YYYY-MM-DD"
-        maxlength="10"
-        pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
-        title="YYYY-MM-DD"
-        help="Only download media uploaded on or before this date. Pairs with the cutoff date to download a specific date range. Leave blank for no upper bound"
-      />
-    </section>
-
-    <.input
-      field={f[:retention_period_days]}
-      type="number"
-      label="Retention Period (days)"
-      min="0"
-      help="Days between when media is <em>downloaded</em> and when it's deleted. Leave blank to keep media indefinitely"
-      html_help={true}
-    />
-
-    <% preview_url = if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/retention_preview", else: "" %>
-    <section
-      x-show="advancedMode"
-      x-data={
-        """
-        {
-          url: '#{preview_url}',
-          loaded: false,
-          error: false,
-          summary: '',
-          async refresh() {
-            if (!this.url) return;
-            const q = new URLSearchParams({
-              keep_count: document.getElementById('source_keep_count')?.value || '',
-              keep_gigabytes: document.getElementById('source_keep_gigabytes')?.value || '',
-              eviction_strategy: document.getElementById('source_eviction_strategy')?.value || ''
-            });
-            try {
-              const res = await fetch(this.url + '?' + q.toString());
-              if (!res.ok) { this.error = true; this.loaded = true; return; }
-              const d = await res.json();
-              this.error = false;
-              if (d.total === 0) {
-                this.summary = 'No downloaded media for this source yet';
-              } else if (d.evict === 0) {
-                this.summary = 'Within budget - keeping all ' + d.total + ' downloaded items';
-              } else {
-                const gb = (d.bytes_to_free / 1000000000).toFixed(1);
-                this.summary = 'Would keep ' + d.keep + ' of ' + d.total + ', evict ' + d.evict + ' (~' + gb + ' GB freed)';
-              }
-              this.loaded = true;
-            } catch (e) { this.error = true; this.loaded = true; }
-          }
-        }
-        """
-      }
-      x-init="refresh()"
-      x-on:input.debounce.400ms="refresh()"
-      x-on:change="refresh()"
-    >
-      <.input
-        field={f[:keep_count]}
-        type="number"
-        label="Keep Most Recent (count)"
-        min="0"
-        help="Only this many items (chosen by the eviction strategy) are ever downloaded and kept - the rest aren't downloaded at all. Leave blank for no limit"
-      />
-
-      <.input
-        type="number"
-        name="source[keep_gigabytes]"
-        id="source_keep_gigabytes"
-        value={gigabytes_from_bytes(f[:keep_bytes].value)}
-        label="Maximum Total Size (GB)"
-        min="0"
-        step="0.01"
-        help="Keep at most this many gigabytes of downloaded media. Unlike the count limit this only trims after download (file sizes aren't known until then). Most restrictive of count/size wins. Leave blank for no limit"
-      />
-
-      <.input
-        field={f[:eviction_strategy]}
-        options={eviction_strategies()}
-        type="select"
-        label="Eviction Strategy"
-        help="For the count limit: which items to download and keep. For the size limit: which to evict first when over budget"
-      />
-
-      <.input
-        field={f[:max_delete_percent]}
-        type="number"
-        label="Max Delete Percent (safety guard)"
-        min="0"
-        max="100"
-        help="Skip budget eviction for this source if a single run would evict more than this percent of its downloaded media. Leave blank to disable the guard"
-      />
-
-      <div
-        x-show="loaded"
-        x-cloak
-        class="mt-2 rounded-md border border-stroke px-4 py-3 text-sm font-medium dark:border-strokedark dark:bg-meta-4"
-      >
-        <span x-show="!error" x-text="summary"></span>
-        <span x-show="error" class="text-meta-1">Couldn't compute retention preview</span>
-      </div>
-    </section>
-
-    <section x-show="advancedMode">
-      <h3 class="mt-8 text-2xl text-black dark:text-white">
-        Advanced Options
-      </h3>
-      <p class="text-sm mt-2">
-        Tread carefully
-      </p>
-
-      <% filter_breakdown_url =
-        if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/filter_breakdown", else: "" %>
-      <section
-        class="mt-6"
-        data-config={filter_config_json(f[:filter_config].value)}
-        x-data={
-          """
-          {
-            url: '#{filter_breakdown_url}',
-            match: 'all',
-            rules: [],
-            loaded: false,
-            error: false,
-            bd: { total: 0, matched: 0, excluded: 0, cadence: [], matched_titles: [], excluded_titles: [] },
-            init() {
-              try {
-                const cfg = JSON.parse(this.$el.dataset.config || '{}');
-                this.match = cfg.match || 'all';
-                this.rules = Array.isArray(cfg.rules) ? cfg.rules : [];
-              } catch (e) {}
-              this.$watch('rules', () => this.refresh());
-              this.$watch('match', () => this.refresh());
-              this.refresh();
-            },
-            addRule() { this.rules.push({ field: 'title', operator: 'excludes', value: '' }); },
-            removeRule(i) { this.rules.splice(i, 1); },
-            configJson() { return JSON.stringify({ match: this.match, rules: this.rules }); },
-            maxMonth() { let m = 0; for (const b of this.bd.cadence) { const t = b.matched + b.excluded; if (t > m) m = t; } return m || 1; },
-            barStyle(b) { const t = b.matched + b.excluded; const h = t ? Math.max(3, (t / this.maxMonth()) * 100) : 0; return 'height:' + h + '%'; },
-            segStyle(part, b) { const t = b.matched + b.excluded; const h = t ? (b[part] / t) * 100 : 0; const col = part === 'excluded' ? '#e5534b' : '#3fb950'; return 'height:' + h + '%;background:' + col; },
-            async refresh() {
-              if (!this.url) return;
-              const q = new URLSearchParams({
-                title_filter_regex: document.getElementById('source_title_filter_regex')?.value || '',
-                title_exclude_regex: document.getElementById('source_title_exclude_regex')?.value || '',
-                config: this.configJson()
-              });
-              try {
-                const res = await fetch(this.url + '?' + q.toString());
-                if (!res.ok) { this.error = true; this.loaded = true; return; }
-                const d = await res.json();
-                if (d.error) { this.error = true; this.loaded = true; return; }
-                this.error = false; this.bd = d; this.loaded = true;
-              } catch (e) { this.error = true; this.loaded = true; }
+        <section
+          x-data={
+            """
+            {
+              placeholders: JSON.parse('#{output_path_template_override_placeholders(@media_profiles)}'),
+              inputValue: null
             }
+            """
           }
-          """
-        }
-        x-on:input.debounce.400ms="refresh()"
-        x-on:change="refresh()"
-      >
-        <h3 class="mt-8 text-2xl text-black dark:text-white">Filtering</h3>
-        <p class="text-sm mt-2 mb-3 opacity-70">
-          Decide which videos get downloaded. The title regexes and the rules below all apply together; the live preview shows exactly what is in vs out.
+          x-on:load-template="inputValue = placeholders[mediaProfileId]"
+        >
+          <.input
+            field={f[:output_path_template_override]}
+            type="text"
+            inputclass="font-mono"
+            label="Output path template override"
+            help={output_path_template_override_help()}
+            html_help={true}
+            x-bind:placeholder="placeholders[mediaProfileId]"
+            x-model.fill="inputValue"
+          />
+        </section>
+      </:tab>
+
+      <%!-- 2. INDEXING: how often to check, and whether to download --%>
+      <:tab title="Indexing" id="indexing">
+        <p class="mb-5 text-sm text-bodydark">How often Pinchflat checks for new media, and whether it downloads it.</p>
+
+        <section x-data="{ fastIndexingEnabled: null }">
+          <.input
+            field={f[:index_frequency_minutes]}
+            options={friendly_index_frequencies()}
+            type="select"
+            label="Index Frequency"
+            x-bind:disabled="fastIndexingEnabled == true"
+            x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60))"
+            help="Indexing is the process of checking for media to download. For best results, set this to the longest delay you can tolerate for this source"
+          />
+
+          <div phx-click={show_modal("upgrade-modal")}>
+            <.input
+              field={f[:fast_index]}
+              type="toggle"
+              label="Use Fast Indexing"
+              label_suffix="(pro)"
+              help="Not recommended for playlists. Overrides 'Index Frequency'. See below for more details (seriously, there's a TL;DR that's worth reading)"
+              x-init="
+              // `enabled` is the data attribute that the toggle uses internally
+              fastIndexingEnabled = enabled
+              $watch('enabled', value => fastIndexingEnabled = !!value)
+            "
+            />
+          </div>
+        </section>
+
+        <.input
+          field={f[:download_media]}
+          type="toggle"
+          label="Download Media"
+          help="Unchecking still indexes media but it won't be downloaded until you enable this option"
+        />
+
+        <.input
+          field={f[:cookie_behaviour]}
+          options={friendly_cookie_behaviours()}
+          type="select"
+          label="Cookie Behaviour"
+          help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
+        />
+
+        <div class="mt-6 rounded-sm p-4 dark:bg-meta-4 md:p-6">
+          <.fast_indexing_help />
+        </div>
+      </:tab>
+
+      <%!-- 3. FILTERING: which media is a viable download --%>
+      <:tab title="Filtering" id="filtering">
+        <p class="mb-5 text-sm text-bodydark">
+          Decide which media is even a viable download. Set duration bounds and build rules on the title or
+          description; the live preview shows exactly what's in vs out. What survives here flows on to Limits.
         </p>
 
-        <.input
-          field={f[:title_filter_regex]}
-          type="text"
-          label="Title Filter Regex (include)"
-          placeholder="(?i)^How to Bike$"
-          help={title_filter_regex_help()}
-          html_help={true}
-        />
-
-        <.input
-          field={f[:title_exclude_regex]}
-          type="text"
-          label="Title Exclude Regex"
-          placeholder="(?i)compilation|best of|#shorts"
-          help={title_exclude_regex_help()}
-          html_help={true}
-        />
-
-        <div class="mt-4 mb-3 flex items-center gap-2 text-sm">
-          <span>Match</span>
-          <select
-            x-model="match"
-            class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
-          >
-            <option value="all">all rules</option>
-            <option value="any">any rule</option>
-          </select>
-          <span>of the following:</span>
+        <div class="grid gap-4 md:grid-cols-2">
+          <.input
+            field={f[:min_duration_seconds]}
+            type="number"
+            label="Minimum Duration (seconds)"
+            min="0"
+            help="Skip media shorter than this. Leave blank for no minimum"
+          />
+          <.input
+            field={f[:max_duration_seconds]}
+            type="number"
+            label="Maximum Duration (seconds)"
+            min="0"
+            help="Skip media longer than this. Leave blank for no maximum"
+          />
         </div>
 
-        <template x-for="(rule, i) in rules" x-bind:key="i">
-          <div class="mb-2 flex flex-wrap items-center gap-2">
-            <select
-              x-model="rule.field"
-              x-on:change="rule.operator = rule.field === 'duration' ? 'longer_than' : 'excludes'"
-              class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
-            >
-              <option value="title">Title</option>
-              <option value="duration">Duration</option>
-            </select>
-            <template x-if="rule.field === 'title'">
-              <select
-                x-model="rule.operator"
-                class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
-              >
-                <option value="contains">contains</option>
-                <option value="excludes">excludes</option>
-              </select>
-            </template>
-            <template x-if="rule.field === 'duration'">
-              <select
-                x-model="rule.operator"
-                class="rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
-              >
-                <option value="longer_than">longer than (sec)</option>
-                <option value="shorter_than">shorter than (sec)</option>
-              </select>
-            </template>
-            <input
-              type="text"
-              x-model="rule.value"
-              x-bind:placeholder="rule.field === 'duration' ? 'seconds' : 'regex e.g. (?i)compilation'"
-              class="min-w-40 flex-1 rounded border border-stroke bg-transparent py-1.5 px-3 dark:border-strokedark dark:bg-meta-4"
-            />
-            <button
-              type="button"
-              x-on:click="removeRule(i)"
-              class="rounded border border-stroke px-2.5 py-1.5 hover:text-meta-1 dark:border-strokedark"
-              title="Remove rule"
-            >
-              &times;
-            </button>
-          </div>
-        </template>
-
-        <button type="button" x-on:click="addRule()" class="mt-1 text-sm text-primary hover:underline">
-          + Add rule
-        </button>
-
-        <input type="hidden" name="source[filter_config_json]" x-bind:value="configJson()" />
-
-        <div x-show="error" x-cloak class="mt-4 text-sm text-meta-1">
-          Invalid filter pattern - fix the regex to see the preview
-        </div>
-
-        <div x-show="loaded && !error" x-cloak class="mt-5">
-          <div class="mb-2 flex items-baseline gap-3 text-sm">
-            <span class="font-semibold">Live preview</span>
-            <span><span class="font-bold" style="color:#3fb950" x-text="bd.matched"></span> downloading</span>
-            <span><span class="font-bold" style="color:#e5534b" x-text="bd.excluded"></span> filtered out</span>
-            <span class="opacity-60">of <span x-text="bd.total"></span></span>
-          </div>
-
-          <div class="flex h-28 items-end gap-px overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
-            <template x-for="(b, i) in bd.cadence" x-bind:key="i">
-              <div
-                class="flex w-1.5 shrink-0 flex-col justify-end"
-                x-bind:style="barStyle(b)"
-                x-bind:title="b.month + ': ' + b.matched + ' in, ' + b.excluded + ' out'"
-              >
-                <div class="rounded-t-sm" x-bind:style="segStyle('excluded', b)"></div>
-                <div x-bind:style="segStyle('matched', b)"></div>
-              </div>
-            </template>
-          </div>
-          <div class="mt-1 flex justify-between text-xs opacity-70" x-show="bd.cadence.length">
-            <span x-text="bd.cadence[0] && bd.cadence[0].month"></span>
-            <span x-text="bd.cadence.length && bd.cadence[bd.cadence.length - 1].month"></span>
-          </div>
-
-          <div class="mt-4 grid grid-cols-2 gap-3">
-            <div>
-              <div class="mb-1 text-xs font-bold" style="color:#3fb950">
-                Will download (<span x-text="bd.matched"></span>)
-              </div>
-              <ul class="max-h-48 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
-                <template x-for="(t, i) in bd.matched_titles" x-bind:key="i">
-                  <li
-                    class="truncate border-b border-stroke px-2 py-1 dark:border-strokedark"
-                    x-text="t"
-                    x-bind:title="t"
-                  >
-                  </li>
-                </template>
-              </ul>
-              <p
-                class="mt-1 text-xs opacity-60"
-                x-show="bd.matched > bd.matched_titles.length"
-                x-text="'+ ' + (bd.matched - bd.matched_titles.length) + ' more'"
-              >
-              </p>
-            </div>
-            <div>
-              <div class="mb-1 text-xs font-bold" style="color:#e5534b">
-                Filtered out (<span x-text="bd.excluded"></span>)
-              </div>
-              <ul class="max-h-48 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
-                <template x-for="(t, i) in bd.excluded_titles" x-bind:key="i">
-                  <li
-                    class="truncate border-b border-stroke px-2 py-1 dark:border-strokedark"
-                    x-text="t"
-                    x-bind:title="t"
-                  >
-                  </li>
-                </template>
-              </ul>
-              <p
-                class="mt-1 text-xs opacity-60"
-                x-show="bd.excluded > bd.excluded_titles.length"
-                x-text="'+ ' + (bd.excluded - bd.excluded_titles.length) + ' more'"
-              >
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section
-        x-data={
-          """
-          { 
-            placeholders: JSON.parse('#{output_path_template_override_placeholders(@media_profiles)}'),
-            inputValue: null
+        <% filter_breakdown_url =
+          if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/filter_breakdown", else: "" %>
+        <section
+          class="mt-2"
+          data-config={filter_config_json(f[:filter_config].value)}
+          x-data={
+            """
+            {
+              url: '#{filter_breakdown_url}',
+              match: 'all',
+              rules: [],
+              loaded: false,
+              error: false,
+              bd: { total: 0, matched: 0, excluded: 0, cadence: [], matched_titles: [], excluded_titles: [] },
+              init() {
+                try {
+                  const cfg = JSON.parse(this.$el.dataset.config || '{}');
+                  this.match = cfg.match || 'all';
+                  this.rules = Array.isArray(cfg.rules) ? cfg.rules : [];
+                } catch (e) {}
+                this.$watch('rules', () => this.refresh());
+                this.$watch('match', () => this.refresh());
+                this.refresh();
+              },
+              addRule() { this.rules.push({ field: 'title', operator: 'excludes', value: '' }); },
+              removeRule(i) { this.rules.splice(i, 1); },
+              opsFor(field) { return field === 'duration' ? 'duration' : 'text'; },
+              onFieldChange(rule) { rule.operator = rule.field === 'duration' ? 'longer_than' : 'excludes'; },
+              configJson() { return JSON.stringify({ match: this.match, rules: this.rules }); },
+              maxMonth() { let m = 0; for (const b of this.bd.cadence) { const t = b.matched + b.excluded; if (t > m) m = t; } return m || 1; },
+              barStyle(b) { const t = b.matched + b.excluded; const h = t ? Math.max(3, (t / this.maxMonth()) * 100) : 0; return 'height:' + h + '%'; },
+              segStyle(part, b) { const t = b.matched + b.excluded; const h = t ? (b[part] / t) * 100 : 0; const col = part === 'excluded' ? '#e5534b' : '#3fb950'; return 'height:' + h + '%;background:' + col; },
+              async refresh() {
+                if (!this.url) return;
+                const q = new URLSearchParams({
+                  title_filter_regex: document.getElementById('source_title_filter_regex')?.value || '',
+                  title_exclude_regex: document.getElementById('source_title_exclude_regex')?.value || '',
+                  config: this.configJson()
+                });
+                try {
+                  const res = await fetch(this.url + '?' + q.toString());
+                  if (!res.ok) { this.error = true; this.loaded = true; return; }
+                  const d = await res.json();
+                  if (d.error) { this.error = true; this.loaded = true; return; }
+                  this.error = false; this.bd = d; this.loaded = true;
+                } catch (e) { this.error = true; this.loaded = true; }
+              }
+            }
+            """
           }
-          """
-        }
-        x-on:load-template="inputValue = placeholders[mediaProfileId]"
-      >
+          x-on:input.debounce.400ms="refresh()"
+          x-on:change="refresh()"
+        >
+          <.input
+            field={f[:title_filter_regex]}
+            type="text"
+            label="Title Filter Regex (include)"
+            placeholder="(?i)^How to Bike$"
+            help={title_filter_regex_help()}
+            html_help={true}
+          />
+
+          <.input
+            field={f[:title_exclude_regex]}
+            type="text"
+            label="Title Exclude Regex"
+            placeholder="(?i)compilation|best of|#shorts"
+            help={title_exclude_regex_help()}
+            html_help={true}
+          />
+
+          <div class="mb-3 mt-5 flex items-center gap-2 text-sm">
+            <span class="font-semibold">Rules &mdash; match</span>
+            <select
+              x-model="match"
+              class="rounded border border-stroke bg-transparent px-3 py-1.5 dark:border-strokedark dark:bg-meta-4"
+            >
+              <option value="all">all rules</option>
+              <option value="any">any rule</option>
+            </select>
+            <span>of the following:</span>
+          </div>
+
+          <template x-for="(rule, i) in rules" x-bind:key="i">
+            <div class="mb-2 flex flex-wrap items-center gap-2">
+              <select
+                x-model="rule.field"
+                x-on:change="onFieldChange(rule)"
+                class="rounded border border-stroke bg-transparent px-3 py-1.5 dark:border-strokedark dark:bg-meta-4"
+              >
+                <option value="title">Title</option>
+                <option value="description">Description</option>
+                <option value="duration">Duration</option>
+              </select>
+              <template x-if="opsFor(rule.field) === 'text'">
+                <select
+                  x-model="rule.operator"
+                  class="rounded border border-stroke bg-transparent px-3 py-1.5 dark:border-strokedark dark:bg-meta-4"
+                >
+                  <option value="contains">contains</option>
+                  <option value="excludes">excludes</option>
+                </select>
+              </template>
+              <template x-if="opsFor(rule.field) === 'duration'">
+                <select
+                  x-model="rule.operator"
+                  class="rounded border border-stroke bg-transparent px-3 py-1.5 dark:border-strokedark dark:bg-meta-4"
+                >
+                  <option value="longer_than">longer than (sec)</option>
+                  <option value="shorter_than">shorter than (sec)</option>
+                </select>
+              </template>
+              <input
+                type="text"
+                x-model="rule.value"
+                x-bind:placeholder="rule.field === 'duration' ? 'seconds' : 'regex e.g. (?i)compilation'"
+                class="min-w-40 flex-1 rounded border border-stroke bg-transparent px-3 py-1.5 dark:border-strokedark dark:bg-meta-4"
+              />
+              <button
+                type="button"
+                x-on:click="removeRule(i)"
+                class="rounded border border-stroke px-2.5 py-1.5 hover:text-meta-1 dark:border-strokedark"
+                title="Remove rule"
+              >
+                &times;
+              </button>
+            </div>
+          </template>
+
+          <button type="button" x-on:click="addRule()" class="mt-1 text-sm text-primary hover:underline">
+            + Add rule
+          </button>
+
+          <input type="hidden" name="source[filter_config_json]" x-bind:value="configJson()" />
+
+          <div x-show="error" x-cloak class="mt-4 text-sm text-meta-1">
+            Invalid filter pattern - fix the regex to see the preview
+          </div>
+
+          <div x-show="loaded && !error" x-cloak class="mt-6">
+            <div class="mb-2 flex items-baseline gap-3 text-sm">
+              <span class="font-mono text-xs font-semibold uppercase tracking-wider text-bodydark2">Live preview</span>
+              <span><span class="font-bold" style="color:#3fb950" x-text="bd.matched"></span> downloading</span>
+              <span><span class="font-bold" style="color:#e5534b" x-text="bd.excluded"></span> filtered out</span>
+              <span class="opacity-60">of <span x-text="bd.total"></span></span>
+            </div>
+
+            <div class="flex h-28 items-end gap-px overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
+              <template x-for="(b, i) in bd.cadence" x-bind:key="i">
+                <div
+                  class="flex w-1.5 shrink-0 flex-col justify-end"
+                  x-bind:style="barStyle(b)"
+                  x-bind:title="b.month + ': ' + b.matched + ' in, ' + b.excluded + ' out'"
+                >
+                  <div class="rounded-t-sm" x-bind:style="segStyle('excluded', b)"></div>
+                  <div x-bind:style="segStyle('matched', b)"></div>
+                </div>
+              </template>
+            </div>
+            <div class="mt-1 flex justify-between text-xs opacity-70" x-show="bd.cadence.length">
+              <span x-text="bd.cadence[0] && bd.cadence[0].month"></span>
+              <span x-text="bd.cadence.length && bd.cadence[bd.cadence.length - 1].month"></span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-3">
+              <div>
+                <div class="mb-1 text-xs font-bold" style="color:#3fb950">
+                  Will download (<span x-text="bd.matched"></span>)
+                </div>
+                <ul class="max-h-48 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
+                  <template x-for="(t, i) in bd.matched_titles" x-bind:key="i">
+                    <li
+                      class="truncate border-b border-stroke px-2 py-1 dark:border-strokedark"
+                      x-text="t"
+                      x-bind:title="t"
+                    >
+                    </li>
+                  </template>
+                </ul>
+                <p
+                  class="mt-1 text-xs opacity-60"
+                  x-show="bd.matched > bd.matched_titles.length"
+                  x-text="'+ ' + (bd.matched - bd.matched_titles.length) + ' more'"
+                >
+                </p>
+              </div>
+              <div>
+                <div class="mb-1 text-xs font-bold" style="color:#e5534b">
+                  Filtered out (<span x-text="bd.excluded"></span>)
+                </div>
+                <ul class="max-h-48 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
+                  <template x-for="(t, i) in bd.excluded_titles" x-bind:key="i">
+                    <li
+                      class="truncate border-b border-stroke px-2 py-1 dark:border-strokedark"
+                      x-text="t"
+                      x-bind:title="t"
+                    >
+                    </li>
+                  </template>
+                </ul>
+                <p
+                  class="mt-1 text-xs opacity-60"
+                  x-show="bd.excluded > bd.excluded_titles.length"
+                  x-text="'+ ' + (bd.excluded - bd.excluded_titles.length) + ' more'"
+                >
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </:tab>
+
+      <%!-- 4. LIMITS: of the viable media, how much to keep --%>
+      <:tab title="Limits" id="limits">
+        <p class="mb-5 text-sm text-bodydark">
+          Of the media that passed Filtering, how much to keep - by time, size, and count. Pinchflat keeps the
+          library inside these limits automatically.
+        </p>
+
+        <section x-data={"{ cutoffDate: '#{f[:download_cutoff_date].value}' }"}>
+          <div :if={@cadence != []} class="mb-5">
+            <% max_count = @cadence |> Enum.map(& &1.count) |> Enum.max() %>
+            <h3 class="mb-1 mt-2 text-xl font-bold">Time window</h3>
+            <p class="mb-3 text-sm opacity-70">
+              Click a bar to set the download start date - highlighted months are inside the window.
+            </p>
+            <div class="flex h-32 items-end gap-px overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
+              <div
+                :for={bucket <- @cadence}
+                class="w-1.5 shrink-0 cursor-pointer rounded-t-sm hover:opacity-100"
+                style={"height: #{cadence_bar_pct(bucket.count, max_count)}%"}
+                title={"#{bucket.month}: #{bucket.count} uploads (click to start here)"}
+                x-bind:class={"'#{bucket.month}' >= (cutoffDate || '').slice(0,7) ? 'bg-primary' : 'bg-bodydark opacity-40'"}
+                x-on:click={"cutoffDate = '#{bucket.month}-01'"}
+              >
+              </div>
+            </div>
+            <div class="mt-1 flex justify-between text-xs opacity-70">
+              <span>{List.first(@cadence).month}</span>
+              <span>peak {max_count}/mo</span>
+              <span>{List.last(@cadence).month}</span>
+            </div>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <.input
+              field={f[:download_cutoff_date]}
+              type="text"
+              label="From (cutoff date)"
+              placeholder="YYYY-MM-DD"
+              maxlength="10"
+              pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
+              title="YYYY-MM-DD"
+              help="Only keep media uploaded on or after this date. Leave blank for no start bound"
+              x-model="cutoffDate"
+            >
+              <:input_append>
+                <.input
+                  prompt="preset"
+                  name="download_cutoff_date_preset"
+                  value=""
+                  options={cutoff_date_presets()}
+                  type="select"
+                  inputclass="w-28 ml-2"
+                  x-on:change={"cutoffDate = $event.target.value || '#{f[:download_cutoff_date].value}'"}
+                />
+              </:input_append>
+            </.input>
+
+            <.input
+              field={f[:download_end_date]}
+              type="text"
+              label="Until (end date)"
+              placeholder="YYYY-MM-DD"
+              maxlength="10"
+              pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
+              title="YYYY-MM-DD"
+              help="Only keep media uploaded on or before this date. Leave blank for no end bound"
+            />
+          </div>
+        </section>
+
         <.input
-          field={f[:output_path_template_override]}
-          type="text"
-          inputclass="font-mono"
-          label="Output path template override"
-          help={output_path_template_override_help()}
+          field={f[:retention_period_days]}
+          type="number"
+          label="Retention Period (days)"
+          min="0"
+          help="Delete media this many days after it was <em>downloaded</em>. Leave blank to keep until other limits apply"
           html_help={true}
-          x-bind:placeholder="placeholders[mediaProfileId]"
-          x-model.fill="inputValue"
         />
-      </section>
-    </section>
 
-    <.button class="my-10 sm:mb-7.5 w-full sm:w-auto" rounding="rounded-lg">Save Source</.button>
+        <% preview_url = if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/retention_preview", else: "" %>
+        <section
+          class="mt-2"
+          x-data={
+            """
+            {
+              url: '#{preview_url}',
+              loaded: false,
+              error: false,
+              summary: '',
+              async refresh() {
+                if (!this.url) return;
+                const q = new URLSearchParams({
+                  keep_count: document.getElementById('source_keep_count')?.value || '',
+                  keep_gigabytes: document.getElementById('source_keep_gigabytes')?.value || '',
+                  eviction_strategy: document.getElementById('source_eviction_strategy')?.value || ''
+                });
+                try {
+                  const res = await fetch(this.url + '?' + q.toString());
+                  if (!res.ok) { this.error = true; this.loaded = true; return; }
+                  const d = await res.json();
+                  this.error = false;
+                  if (d.total === 0) {
+                    this.summary = 'No downloaded media for this source yet';
+                  } else if (d.evict === 0) {
+                    this.summary = 'Within budget - keeping all ' + d.total + ' downloaded items';
+                  } else {
+                    const gb = (d.bytes_to_free / 1000000000).toFixed(1);
+                    this.summary = 'Would keep ' + d.keep + ' of ' + d.total + ', evict ' + d.evict + ' (~' + gb + ' GB freed)';
+                  }
+                  this.loaded = true;
+                } catch (e) { this.error = true; this.loaded = true; }
+              }
+            }
+            """
+          }
+          x-init="refresh()"
+          x-on:input.debounce.400ms="refresh()"
+          x-on:change="refresh()"
+        >
+          <h3 class="mb-1 mt-6 text-xl font-bold">Capacity</h3>
+          <p class="mb-3 text-sm opacity-70">Cap the kept library by count and/or size; the rest is auto-evicted.</p>
 
-    <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mb-5">
-      <.fast_indexing_help />
-    </div>
+          <div class="grid gap-4 md:grid-cols-2">
+            <.input
+              field={f[:keep_count]}
+              type="number"
+              label="Keep most recent (count)"
+              min="0"
+              help="Only this many items (by the strategy below) are ever downloaded and kept. Leave blank for no count limit"
+            />
+
+            <.input
+              type="number"
+              name="source[keep_gigabytes]"
+              id="source_keep_gigabytes"
+              value={gigabytes_from_bytes(f[:keep_bytes].value)}
+              label="Maximum total size (GB)"
+              min="0"
+              step="0.01"
+              help="Trim the library to this size (most restrictive of count/size wins). Leave blank for no size limit"
+            />
+
+            <.input
+              field={f[:eviction_strategy]}
+              options={eviction_strategies()}
+              type="select"
+              label="Eviction strategy"
+              help="Which media to keep, and which to evict first when over budget"
+            />
+
+            <.input
+              field={f[:max_delete_percent]}
+              type="number"
+              label="Max delete percent (safety guard)"
+              min="0"
+              max="100"
+              help="Skip eviction if a single run would remove more than this percent of downloaded media. Leave blank to disable"
+            />
+          </div>
+
+          <div
+            x-show="loaded"
+            x-cloak
+            class="mt-4 rounded-md border border-stroke px-4 py-3 text-sm font-medium dark:border-strokedark dark:bg-meta-4"
+          >
+            <span x-show="!error" x-text="summary"></span>
+            <span x-show="error" class="text-meta-1">Couldn't compute retention preview</span>
+          </div>
+        </section>
+      </:tab>
+    </.tabbed_layout>
   </section>
+
+  <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" rounding="rounded-lg">Save Source</.button>
 </.simple_form>

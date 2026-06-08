@@ -92,6 +92,7 @@ Inverse of the existing `title_filter_regex` (which only includes): media whose 
 A multi-rule filter on the source form: build a list of rules and combine them with **all** (AND) or **any** (OR). Each rule is `field` + `operator` + `value`:
 
 - title `contains` / `excludes` a regex
+- description `contains` / `excludes` a regex (a blank description passes an `excludes` rule)
 - duration `longer than` / `shorter than` N seconds
 
 Only matching media is downloaded; rules compose with the single title regexes above.
@@ -113,3 +114,26 @@ The title regexes and the rule builder share one **Filtering** panel with a live
 ### Deferred
 
 In-list live highlighting on the main media tables, more rule fields (date, short/livestream flags), and nested AND/OR groups are still ahead. The older `filter_preview` / `rules_preview` count endpoints remain but the UI now uses the richer `filter_breakdown`.
+
+---
+
+## UX overhaul ("Control Room")
+
+A cohesive visual language and layout pass across the subscription lifecycle. Shared kit in `PinchflatWeb.CustomComponents.DashboardComponents` (stat_tile, status_pill, sparkline, line_sparkline, change_badge, activity_graph, config_card/config_kv, source_avatar). Keeps the existing palette; adds `font-mono` for data.
+
+### Sources list
+
+A monitoring surface, not a flat table: summary tiles (downloaded +N/week, library size, culled/freed, net change) and per-source rows with avatar, status pill + enable toggle, downloaded count + size, a **last-year line sparkline** of weekly downloads, and `+new / -culled` badges. Sorting + pagination preserved.
+
+### Source detail
+
+Replaces the raw attribute dump with a briefing: identity header (avatar/profile/status), metric tiles, a diverging weekly **activity graph** (downloads up / culls down), the cadence histogram, and four labelled **config summary cards** (Window / Retention / Filtering / Output) with edit links.
+
+### Edit form (workflow tabs)
+
+Restructured from one long scroll into a four-stage workflow using the tab component, dissolving the old "advanced mode" toggle:
+
+1. **Source** - URL, name, media profile, output template.
+2. **Indexing** - frequency, fast index, download media, cookies.
+3. **Filtering** - "what's a viable download": min/max duration, title regexes, and the rule builder (title/description/duration, all/any), with the live in/out preview (stacked histogram + title lists).
+4. **Limits** - "of the viable, how much to keep": Time window (interactive cadence + cutoff/end date), Retention period, and Capacity (count/size/strategy/guard) with the live retention preview.

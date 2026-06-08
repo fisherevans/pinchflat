@@ -520,6 +520,23 @@ defmodule Pinchflat.MediaTest do
       assert Media.list_pending_media_items_for(source) == [keep]
     end
 
+    test "description excludes rule drops matching descriptions but keeps blank ones" do
+      source =
+        source_fixture(%{
+          filter_config: %{
+            "match" => "all",
+            "rules" => [%{"field" => "description", "operator" => "excludes", "value" => "(?i)sponsor"}]
+          }
+        })
+
+      keep = media_item_fixture(%{source_id: source.id, media_filepath: nil, description: "a real episode"})
+      blank = media_item_fixture(%{source_id: source.id, media_filepath: nil, description: nil})
+      _drop = media_item_fixture(%{source_id: source.id, media_filepath: nil, description: "thanks to our SPONSOR"})
+
+      ids = source |> Media.list_pending_media_items_for() |> Enum.map(& &1.id) |> Enum.sort()
+      assert ids == Enum.sort([keep.id, blank.id])
+    end
+
     test "duration longer_than rule keeps only longer media" do
       source =
         source_fixture(%{
