@@ -658,6 +658,10 @@
               barClass(i) { if (i >= this.keptNow()) return 'bg-meta-1/60'; return this.items[i].est ? 'bg-meta-3/40' : 'bg-meta-3'; },
               noCount() { return this.keepCount === ''; },
               noGb() { return this.keepGb === ''; },
+              // Dragging the slider to the far right (the headroom max) means "no limit",
+              // so you can grab and drag straight from the no-limit state to set a cap.
+              setCount(v) { this.keepCount = (v >= this.countAxis()) ? '' : String(v); },
+              setGb(v) { this.keepGb = (v >= this.gbAxis()) ? '' : String(v); },
               toggleNoCount() { this.keepCount = (this.keepCount === '') ? String(Math.min(this.total || 25, this.countAxis())) : ''; },
               toggleNoGb() { this.keepGb = (this.keepGb === '') ? String(this.gbNiceCeil((this.allBytes() / 1e9) || 0.5)) : ''; }
             }
@@ -735,9 +739,8 @@
                 x-bind:max="countAxis()"
                 step="1"
                 x-bind:value="noCount() ? countAxis() : kcNum()"
-                x-bind:disabled="noCount()"
-                x-on:input="keepCount = String(+$event.target.value)"
-                class="h-2 w-full cursor-pointer appearance-none rounded-full bg-meta-4 accent-primary disabled:opacity-40"
+                x-on:input="setCount(+$event.target.value)"
+                class="h-2 w-full cursor-pointer appearance-none rounded-full bg-meta-4 accent-primary"
               />
               <div class="mt-1 font-mono text-xs text-bodydark2">
                 <span x-show="noCount()">No count limit</span>
@@ -763,9 +766,8 @@
                 x-bind:max="gbAxis()"
                 step="0.1"
                 x-bind:value="noGb() ? gbAxis() : gbNum()"
-                x-bind:disabled="noGb()"
-                x-on:input="keepGb = String(+$event.target.value)"
-                class="h-2 w-full cursor-pointer appearance-none rounded-full bg-meta-4 accent-primary disabled:opacity-40"
+                x-on:input="setGb(+$event.target.value)"
+                class="h-2 w-full cursor-pointer appearance-none rounded-full bg-meta-4 accent-primary"
               />
               <div class="mt-1 font-mono text-xs text-bodydark2">
                 <span x-show="noGb()">No size limit</span>
