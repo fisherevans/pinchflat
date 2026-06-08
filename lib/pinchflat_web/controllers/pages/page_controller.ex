@@ -36,6 +36,7 @@ defmodule PinchflatWeb.Pages.PageController do
 
     conn
     |> render(:onboarding_checklist,
+      page_title: "Get Started",
       media_profiles_exist: Repo.exists?(MediaProfile),
       sources_exist: Repo.exists?(Source),
       layout: {Layouts, :onboarding}

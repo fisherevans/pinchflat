@@ -14,14 +14,14 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
       |> Media.get_media_item!()
       |> Repo.preload([:source, tasks: [:job]])
 
-    render(conn, :show, media_item: media_item)
+    render(conn, :show, page_title: media_item.title, media_item: media_item)
   end
 
   def edit(conn, %{"id" => id}) do
     media_item = Media.get_media_item!(id)
     changeset = Media.change_media_item(media_item)
 
-    render(conn, :edit, media_item: media_item, changeset: changeset)
+    render(conn, :edit, page_title: "Edit #{media_item.title}", media_item: media_item, changeset: changeset)
   end
 
   def update(conn, %{"id" => id, "media_item" => params}) do
@@ -34,7 +34,7 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
         |> redirect(to: ~p"/sources/#{media_item.source_id}/media/#{media_item}")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :edit, media_item: media_item, changeset: changeset)
+        render(conn, :edit, page_title: "Edit #{media_item.title}", media_item: media_item, changeset: changeset)
     end
   end
 

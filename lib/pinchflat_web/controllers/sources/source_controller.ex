@@ -21,7 +21,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
 
   def index(conn, _params) do
-    render(conn, :index)
+    render(conn, :index, page_title: "Sources")
   end
 
   def new(conn, params) do
@@ -33,6 +33,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       end
 
     render(conn, :new,
+      page_title: "New Source",
       media_profiles: media_profiles(),
       layout: get_onboarding_layout(),
       # Most of these don't actually _need_ to be nullified at this point,
@@ -65,6 +66,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, :new,
+          page_title: "New Source",
           changeset: changeset,
           media_profiles: media_profiles(),
           layout: get_onboarding_layout()
@@ -226,6 +228,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       |> Repo.preload(:job)
 
     render(conn, :show,
+      page_title: source.custom_name,
       source: source,
       pending_tasks: pending_tasks,
       cadence: Media.upload_cadence_by_month_for(source),
@@ -316,6 +319,7 @@ defmodule PinchflatWeb.Sources.SourceController do
     changeset = Sources.change_source(source)
 
     render(conn, :edit,
+      page_title: "Edit #{source.custom_name}",
       source: source,
       changeset: changeset,
       media_profiles: media_profiles(),
@@ -334,6 +338,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, :edit,
+          page_title: "Edit #{source.custom_name}",
           source: source,
           changeset: changeset,
           media_profiles: media_profiles(),

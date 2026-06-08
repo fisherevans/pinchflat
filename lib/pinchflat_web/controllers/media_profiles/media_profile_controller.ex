@@ -25,7 +25,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
             )
         }
 
-    render(conn, :index, media_profiles: Repo.all(media_profiles_query))
+    render(conn, :index, page_title: "Media Profiles", media_profiles: Repo.all(media_profiles_query))
   end
 
   def new(conn, params) do
@@ -37,6 +37,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
       end
 
     render(conn, :new,
+      page_title: "New Media Profile",
       layout: get_onboarding_layout(),
       changeset:
         Profiles.change_media_profile(%MediaProfile{
@@ -59,7 +60,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
         |> redirect(to: redirect_location)
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :new, changeset: changeset, layout: get_onboarding_layout())
+        render(conn, :new, page_title: "New Media Profile", changeset: changeset, layout: get_onboarding_layout())
     end
   end
 
@@ -72,14 +73,14 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
       |> order_by(asc: :custom_name)
       |> Repo.all()
 
-    render(conn, :show, media_profile: media_profile, sources: sources)
+    render(conn, :show, page_title: media_profile.name, media_profile: media_profile, sources: sources)
   end
 
   def edit(conn, %{"id" => id}) do
     media_profile = Profiles.get_media_profile!(id)
     changeset = Profiles.change_media_profile(media_profile)
 
-    render(conn, :edit, media_profile: media_profile, changeset: changeset)
+    render(conn, :edit, page_title: "Edit #{media_profile.name}", media_profile: media_profile, changeset: changeset)
   end
 
   def update(conn, %{"id" => id, "media_profile" => media_profile_params}) do
@@ -92,7 +93,11 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
         |> redirect(to: ~p"/media_profiles/#{media_profile}")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :edit, media_profile: media_profile, changeset: changeset)
+        render(conn, :edit,
+          page_title: "Edit #{media_profile.name}",
+          media_profile: media_profile,
+          changeset: changeset
+        )
     end
   end
 

@@ -7,7 +7,7 @@ defmodule PinchflatWeb.Settings.SettingController do
     setting = Settings.record()
     changeset = Settings.change_setting(setting)
 
-    render(conn, "show.html", changeset: changeset)
+    render(conn, "show.html", page_title: "Settings", changeset: changeset)
   end
 
   def update(conn, %{"setting" => setting_params}) do
@@ -20,12 +20,12 @@ defmodule PinchflatWeb.Settings.SettingController do
         |> redirect(to: ~p"/settings")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, "show.html", changeset: changeset)
+        render(conn, "show.html", page_title: "Settings", changeset: changeset)
     end
   end
 
   def app_info(conn, _params) do
-    render(conn, "app_info.html")
+    render(conn, "app_info.html", page_title: "App Info")
   end
 
   def download_logs(conn, _params) do
