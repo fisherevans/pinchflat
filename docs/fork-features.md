@@ -117,6 +117,28 @@ In-list live highlighting on the main media tables, more rule fields (date, shor
 
 ---
 
+## Native sidecar replacements
+
+Brings the `arr-matey` sidecars in-app so no external process writes the live SQLite DB.
+
+### Title cleaning
+
+Per-source rules strip YouTube clickbait (emoji, hashtags, channel handles, brand tags, "Full Episode" markers, season/episode markers, per-channel taglines) from titles. `Pinchflat.Metadata.TitleCleaner` is a pure port of the `cleaner.py` sidecar. The raw title/description are preserved (`media_items.original_title`/`original_description`) so rules can change and be re-applied; `title` holds the cleaned value the NFO/filename/search already consume. Rules (`title_clean_enabled` + `aliases` + `extra_strip`, validated) live in a **Titles** tab on the source form with a live preview (`GET /sources/:id/title_clean_preview`) of original → cleaned pairs.
+
+### Media organizer (clean titles on disk + season strategy)
+
+`Pinchflat.Organizing.MediaOrganizer` reconciles a downloaded item's on-disk layout: it computes the desired path (sanitized clean title + a stable, no-reshuffle season/episode prefix from the profile's `season_strategy`), then two-phase renames media + subtitles (vacate-all then place-all so a renumber can't collide), retags the mp4's embedded tags (`Mp4Tagger`, bundled ffmpeg `-c copy`, behind an injectable runner), rewrites the `.nfo`, and updates the DB. Idempotent; preserves the existing show directory (dodging yt-dlp's channel-name sanitization); skips items with an in-flight download; only touches opted-in sources. `season_strategy` (`:none`/`:single_season`/`:by_year`/`:by_month`) is a media-profile select. `:none` keeps the existing prefix and only swaps in the clean title. Replaces the titleclean file/tag side + normalize-seasons.
+
+- Triggered after a download (`MediaOrganizeWorker`, per-source, unique) and by the **Reprocess Media** source action (`force: true`) which re-applies current rules to the existing library. Stable numbering means culls don't reshuffle survivors, so no cron is needed.
+
+### Media center refresh
+
+`Pinchflat.MediaCenter` fires a Plex section refresh (`X-Plex-Token`) and/or Jellyfin library refresh (`MediaBrowser` token) after the organizer changes files or a poster is replaced. Connection details in Settings; blank = skipped; runs detached so a slow server never blocks a job. Added a `post` callback + request timeouts to the HTTP client.
+
+### Poster manager
+
+A LiveView at `/posters` lists sources with their current `poster.jpg`; select a source, drop/choose an image, and it writes the poster into the show folder (atomic), updates `poster_filepath`, and fires a media-center refresh. First use of LiveView uploads in the app. Replaces the poster-manager sidecar.
+
 ## UX overhaul ("Control Room")
 
 A cohesive visual language and layout pass across the subscription lifecycle. Shared kit in `PinchflatWeb.CustomComponents.DashboardComponents` (stat_tile, status_pill, sparkline, line_sparkline, change_badge, activity_graph, config_card/config_kv, source_avatar). Keeps the existing palette; adds `font-mono` for data.

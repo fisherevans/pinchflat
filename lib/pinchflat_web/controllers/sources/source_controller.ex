@@ -284,6 +284,33 @@ defmodule PinchflatWeb.Sources.SourceController do
     end)
   end
 
+  # Streams a source's current poster image for the poster manager UI.
+  def poster(conn, %{"id" => id}) do
+    source = Sources.get_source!(id)
+
+    case source.poster_filepath do
+      path when is_binary(path) ->
+        if File.exists?(path) do
+          conn
+          |> put_resp_content_type(poster_content_type(path))
+          |> send_file(200, path)
+        else
+          send_resp(conn, 404, "")
+        end
+
+      _ ->
+        send_resp(conn, 404, "")
+    end
+  end
+
+  defp poster_content_type(path) do
+    case path |> Path.extname() |> String.downcase() do
+      ".png" -> "image/png"
+      ".webp" -> "image/webp"
+      _ -> "image/jpeg"
+    end
+  end
+
   def edit(conn, %{"id" => id}) do
     source = Sources.get_source!(id)
     changeset = Sources.change_source(source)

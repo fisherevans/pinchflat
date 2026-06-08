@@ -44,6 +44,9 @@ defmodule PinchflatWeb.Router do
 
     get "/", Pages.PageController, :home
 
+    get "/posters", Posters.PosterController, :index
+    get "/sources/:id/poster", Sources.SourceController, :poster
+
     resources "/media_profiles", MediaProfiles.MediaProfileController
     resources "/search", Searches.SearchController, only: [:show], singleton: true
 
