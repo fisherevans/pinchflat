@@ -16,6 +16,7 @@ config :pinchflat,
   apprise_executable: System.find_executable("apprise"),
   yt_dlp_runner: Pinchflat.YtDlp.CommandRunner,
   apprise_runner: Pinchflat.Lifecycle.Notifications.CommandRunner,
+  mp4_tagger_runner: Pinchflat.Metadata.Mp4Tagger,
   media_directory: "/downloads",
   # The user may or may not store metadata for their needs, but the app will always store its copy
   metadata_directory: "/config/metadata",
