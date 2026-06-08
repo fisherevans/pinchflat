@@ -137,9 +137,31 @@ defmodule PinchflatWeb.Sources.SourceController do
     exclude = blank_to_nil(params["title_exclude_regex"])
     config = parse_filter_config(params["config"])
 
-    json(conn, Media.filter_breakdown(source, include, exclude, config))
+    opts = [
+      min_duration: parse_optional_integer(params["min_duration_seconds"]),
+      max_duration: parse_optional_integer(params["max_duration_seconds"])
+    ]
+
+    json(conn, Media.filter_breakdown(source, include, exclude, config, opts))
   rescue
     _ -> json(conn, %{error: true})
+  end
+
+  # Returns the source's downloaded media as an ordered list of byte sizes (most-keepable
+  # first for the given eviction strategy). The form builds the cumulative curve from this
+  # client-side so the count and size sliders show live "keep N ≈ X GB" readouts without a
+  # round-trip per drag.
+  def retention_curve(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+    strategy = parse_eviction_strategy(params["eviction_strategy"], source.eviction_strategy)
+    items = Media.list_downloaded_media_items_for(source)
+
+    sizes =
+      %{source | eviction_strategy: strategy}
+      |> RetentionPolicy.keep_order(items)
+      |> Enum.map(&(&1.media_size_bytes || 0))
+
+    json(conn, %{total: length(sizes), total_bytes: Enum.sum(sizes), sizes: sizes})
   end
 
   def show(conn, %{"id" => id}) do

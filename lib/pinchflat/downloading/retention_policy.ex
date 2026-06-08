@@ -67,6 +67,17 @@ defmodule Pinchflat.Downloading.RetentionPolicy do
     }
   end
 
+  @doc """
+  Returns a source's downloaded media items in keep-preference order (most-keepable
+  first) for the given eviction strategy. Powers the live retention curve on the form,
+  where dragging a count or size cap highlights which items fall inside it.
+  """
+  def keep_order(%Source{eviction_strategy: strategy}, media_items) do
+    media_items
+    |> Enum.filter(&downloaded?/1)
+    |> sort_for_keeping(strategy)
+  end
+
   defp over_count?(nil, _index), do: false
   defp over_count?(keep_count, index), do: index >= keep_count
 

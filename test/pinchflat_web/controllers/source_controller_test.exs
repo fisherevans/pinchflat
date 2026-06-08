@@ -270,6 +270,20 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "retention_curve" do
+    test "returns ordered downloaded sizes and totals", %{conn: conn} do
+      source = source_fixture()
+      for _ <- 1..3, do: media_item_with_attachments(%{source_id: source.id, media_size_bytes: 1000})
+
+      conn = get(conn, ~p"/sources/#{source.id}/retention_curve?eviction_strategy=oldest")
+      body = json_response(conn, 200)
+
+      assert body["total"] == 3
+      assert body["total_bytes"] == 3000
+      assert length(body["sizes"]) == 3
+    end
+  end
+
   describe "filter_preview" do
     test "returns how the title filters split the source's indexed media", %{conn: conn} do
       source = source_fixture()
@@ -336,8 +350,8 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert body["total"] == 2
       assert body["matched"] == 1
       assert body["excluded"] == 1
-      assert "Drop Compilation" in body["excluded_titles"]
-      assert "Keep Me" in body["matched_titles"]
+      assert "Drop Compilation" in Enum.map(body["excluded_titles"], & &1["title"])
+      assert "Keep Me" in Enum.map(body["matched_titles"], & &1["title"])
       assert [%{"month" => "2024-01", "matched" => 1, "excluded" => 1}] = body["cadence"]
     end
 

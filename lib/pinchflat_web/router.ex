@@ -55,6 +55,7 @@ defmodule PinchflatWeb.Router do
       post "/force_download_pending", Sources.SourceController, :force_download_pending
       post "/force_redownload", Sources.SourceController, :force_redownload
       get "/retention_preview", Sources.SourceController, :retention_preview
+      get "/retention_curve", Sources.SourceController, :retention_curve
       get "/filter_preview", Sources.SourceController, :filter_preview
       get "/rules_preview", Sources.SourceController, :rules_preview
       get "/filter_breakdown", Sources.SourceController, :filter_breakdown

@@ -34,6 +34,36 @@ defmodule PinchflatWeb.CustomComponents.DashboardComponents do
   end
 
   @doc """
+  A small "i" affordance that reveals help text on hover or click. Lets verbose
+  field guidance collapse to an icon next to a label instead of a paragraph under it.
+  """
+  attr :text, :string, required: true
+
+  def info_tip(assigns) do
+    ~H"""
+    <span x-data="{ open: false }" class="relative inline-flex align-middle">
+      <button
+        type="button"
+        x-on:mouseenter="open = true"
+        x-on:mouseleave="open = false"
+        x-on:click.prevent.stop="open = !open"
+        class="grid h-4 w-4 place-items-center rounded-full border border-bodydark2 text-[10px] font-bold leading-none text-bodydark2 transition hover:border-primary hover:text-primary"
+        aria-label="More info"
+      >
+        i
+      </button>
+      <span
+        x-show="open"
+        x-cloak
+        class="absolute left-1/2 top-6 z-50 w-64 -translate-x-1/2 rounded-md border border-stroke bg-white px-3 py-2 text-xs font-normal normal-case leading-relaxed tracking-normal text-bodydark shadow-lg dark:border-strokedark dark:bg-boxdark"
+      >
+        {@text}
+      </span>
+    </span>
+    """
+  end
+
+  @doc """
   A status pill with a colored dot. status: :active | :paused | :indexing | :disabled
   """
   attr :status, :atom, default: :active

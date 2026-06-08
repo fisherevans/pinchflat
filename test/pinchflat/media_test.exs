@@ -235,8 +235,8 @@ defmodule Pinchflat.MediaTest do
       assert result.total == 3
       assert result.matched == 2
       assert result.excluded == 1
-      assert "Best Compilation" in result.excluded_titles
-      assert "Science Now" in result.matched_titles
+      assert "Best Compilation" in Enum.map(result.excluded_titles, & &1.title)
+      assert "Science Now" in Enum.map(result.matched_titles, & &1.title)
 
       assert result.cadence == [
                %{month: "2024-01", matched: 1, excluded: 1},
@@ -251,7 +251,32 @@ defmodule Pinchflat.MediaTest do
 
       result = Media.filter_breakdown(source, "(?i)bike", nil, %{})
       assert result.matched == 1
-      assert result.matched_titles == ["How to Bike"]
+      assert Enum.map(result.matched_titles, & &1.title) == ["How to Bike"]
+    end
+
+    test "narrows by duration bounds and returns a length histogram" do
+      source = source_fixture()
+
+      media_item_fixture(%{
+        source_id: source.id,
+        title: "Short",
+        duration_seconds: 30,
+        uploaded_at: ~U[2024-01-10 00:00:00Z]
+      })
+
+      media_item_fixture(%{
+        source_id: source.id,
+        title: "Long",
+        duration_seconds: 1200,
+        uploaded_at: ~U[2024-01-11 00:00:00Z]
+      })
+
+      result = Media.filter_breakdown(source, nil, nil, %{}, min_duration: 60)
+
+      assert result.matched == 1
+      assert Enum.map(result.matched_titles, & &1.title) == ["Long"]
+      assert result.durations.axis_max > 0
+      assert length(result.durations.bins) == 32
     end
   end
 

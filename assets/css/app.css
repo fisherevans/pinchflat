@@ -29,3 +29,56 @@
     scrollbar-width: none; /* Firefox */
   }
 }
+
+/* Range sliders overlaid on a histogram backdrop (duration filter, retention caps).
+   The track is transparent and non-interactive so the chart shows through; only the
+   thumbs capture pointer events, which lets two thumbs share one track for a dual range. */
+.range-overlay {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.range-overlay::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 100%;
+}
+
+.range-overlay::-moz-range-track {
+  background: transparent;
+  height: 100%;
+}
+
+.range-overlay::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid #3c50e0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+}
+
+.range-overlay::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+
+.range-overlay::-moz-range-thumb {
+  pointer-events: auto;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid #3c50e0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+}

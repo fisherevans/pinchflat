@@ -112,24 +112,34 @@ defmodule Pinchflat.Media do
 
   @doc """
   Given a source and a set of (unsaved) content filters - an include regex, an exclude
-  regex, and a structured rule config - returns a breakdown of how the source's indexed
-  media splits into matched (would download) vs excluded (filtered out):
+  regex, a structured rule config, and optional `:min_duration`/`:max_duration` bounds
+  (seconds) - returns a breakdown of how the source's indexed media splits into matched
+  (would download) vs excluded (filtered out):
 
     %{
       total, matched, excluded,
-      cadence: [%{month, matched, excluded}, ...],   # contiguous monthly, for a stacked bar
-      matched_titles: [...], excluded_titles: [...]    # capped lists of real titles
+      cadence: [%{month, matched, excluded}, ...],     # contiguous monthly, for a stacked bar
+      durations: %{axis_max, bin_seconds, bins: [...]}, # length distribution, for the slider
+      matched_titles: [%{title, duration}, ...],        # capped lists of real items
+      excluded_titles: [%{title, duration}, ...]
     }
 
   Powers the live filter feedback on the source form. Raises on an invalid regex
   (the caller turns that into an error state).
   """
-  def filter_breakdown(%Source{} = source, include, exclude, config) do
+  def filter_breakdown(%Source{} = source, include, exclude, config, opts \\ []) do
+    min_dur = Keyword.get(opts, :min_duration)
+    max_dur = Keyword.get(opts, :max_duration)
     base = from(m in MediaItem, where: m.source_id == ^source.id and not is_nil(m.uploaded_at))
 
     rows =
       base
-      |> select([m], %{id: m.id, title: m.title, month: fragment("strftime('%Y-%m', ?)", m.uploaded_at)})
+      |> select([m], %{
+        id: m.id,
+        title: m.title,
+        duration: m.duration_seconds,
+        month: fragment("strftime('%Y-%m', ?)", m.uploaded_at)
+      })
       |> order_by([m], desc: m.uploaded_at)
       |> Repo.all()
 
@@ -137,6 +147,8 @@ defmodule Pinchflat.Media do
       base
       |> filter_regex(include, :include)
       |> filter_regex(exclude, :exclude)
+      |> filter_duration(:min, min_dur)
+      |> filter_duration(:max, max_dur)
       |> FilterRules.apply_rules(%{source | filter_config: config})
       |> select([m], m.id)
       |> Repo.all()
@@ -149,6 +161,7 @@ defmodule Pinchflat.Media do
       matched: length(matched),
       excluded: length(excluded),
       cadence: breakdown_cadence(rows, matching),
+      durations: duration_histogram(rows |> Enum.map(& &1.duration) |> Enum.reject(&is_nil/1)),
       matched_titles: titles(matched),
       excluded_titles: titles(excluded)
     }
@@ -156,7 +169,11 @@ defmodule Pinchflat.Media do
 
   @breakdown_title_limit 250
 
-  defp titles(rows), do: rows |> Enum.map(& &1.title) |> Enum.take(@breakdown_title_limit)
+  defp titles(rows) do
+    rows
+    |> Enum.take(@breakdown_title_limit)
+    |> Enum.map(&%{title: &1.title, duration: &1.duration})
+  end
 
   defp filter_regex(query, nil, _kind), do: query
   defp filter_regex(query, "", _kind), do: query
@@ -164,6 +181,41 @@ defmodule Pinchflat.Media do
 
   defp filter_regex(query, pattern, :exclude),
     do: where(query, [m], not fragment("regexp_like(?, ?)", m.title, ^pattern))
+
+  defp filter_duration(query, _which, nil), do: query
+  defp filter_duration(query, :min, seconds), do: where(query, [m], m.duration_seconds >= ^seconds)
+  defp filter_duration(query, :max, seconds), do: where(query, [m], m.duration_seconds <= ^seconds)
+
+  # Buckets video lengths into a fixed number of bins for the duration range slider's
+  # backdrop histogram. The axis is capped near the 95th percentile so a single long
+  # outlier (a 6-hour livestream) doesn't flatten the rest; anything past the cap lands
+  # in the top bin.
+  @duration_bin_count 32
+  @nice_steps [5, 10, 15, 30, 60, 120, 180, 300, 600, 900, 1800, 3600]
+
+  defp duration_histogram([]), do: %{axis_max: 0, bin_seconds: 0, bins: []}
+
+  defp duration_histogram(durations) do
+    sorted = Enum.sort(durations)
+    target = max(percentile(sorted, 0.95), 60)
+    bin_seconds = nice_step(max(1, ceil(target / @duration_bin_count)))
+    axis_max = bin_seconds * @duration_bin_count
+
+    bins =
+      Enum.reduce(durations, List.duplicate(0, @duration_bin_count), fn d, acc ->
+        idx = min(@duration_bin_count - 1, div(trunc(d), bin_seconds))
+        List.update_at(acc, idx, &(&1 + 1))
+      end)
+
+    %{axis_max: axis_max, bin_seconds: bin_seconds, bins: bins}
+  end
+
+  defp nice_step(seconds), do: Enum.find(@nice_steps, List.last(@nice_steps), &(&1 >= seconds))
+
+  defp percentile(sorted, p) do
+    n = length(sorted)
+    Enum.at(sorted, min(n - 1, round(p * (n - 1))))
+  end
 
   defp breakdown_cadence(rows, matching) do
     by_month = Enum.group_by(rows, & &1.month)

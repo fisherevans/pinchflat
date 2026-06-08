@@ -111,26 +111,9 @@
       <%!-- 3. FILTERING: which media is a viable download --%>
       <:tab title="Filtering" id="filtering">
         <p class="mb-5 text-sm text-bodydark">
-          Decide which media is even a viable download. Set duration bounds and build rules on the title or
-          description; the live preview shows exactly what's in vs out. What survives here flows on to Limits.
+          Decide which media is even a viable download. Drag the duration range and add title/description rules;
+          the live preview at the bottom updates as you go. What survives here flows on to Limits.
         </p>
-
-        <div class="grid gap-4 md:grid-cols-2">
-          <.input
-            field={f[:min_duration_seconds]}
-            type="number"
-            label="Minimum Duration (seconds)"
-            min="0"
-            help="Skip media shorter than this. Leave blank for no minimum"
-          />
-          <.input
-            field={f[:max_duration_seconds]}
-            type="number"
-            label="Maximum Duration (seconds)"
-            min="0"
-            help="Skip media longer than this. Leave blank for no maximum"
-          />
-        </div>
 
         <% filter_breakdown_url =
           if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/filter_breakdown", else: "" %>
@@ -145,7 +128,10 @@
               rules: [],
               loaded: false,
               error: false,
-              bd: { total: 0, matched: 0, excluded: 0, cadence: [], matched_titles: [], excluded_titles: [] },
+              minDur: #{f[:min_duration_seconds].value || "null"},
+              maxDur: #{f[:max_duration_seconds].value || "null"},
+              durReady: false,
+              bd: { total: 0, matched: 0, excluded: 0, cadence: [], matched_titles: [], excluded_titles: [], durations: { axis_max: 0, bin_seconds: 0, bins: [] } },
               init() {
                 try {
                   const cfg = JSON.parse(this.$el.dataset.config || '{}');
@@ -154,6 +140,8 @@
                 } catch (e) {}
                 this.$watch('rules', () => this.refresh());
                 this.$watch('match', () => this.refresh());
+                this.$watch('minDur', () => this.refresh());
+                this.$watch('maxDur', () => this.refresh());
                 this.refresh();
               },
               addRule() { this.rules.push({ field: 'title', operator: 'excludes', value: '' }); },
@@ -161,6 +149,23 @@
               opsFor(field) { return field === 'duration' ? 'duration' : 'text'; },
               onFieldChange(rule) { rule.operator = rule.field === 'duration' ? 'longer_than' : 'excludes'; },
               configJson() { return JSON.stringify({ match: this.match, rules: this.rules }); },
+              fmtDur(s) {
+                if (s === null || s === undefined) return '-';
+                s = Math.round(s);
+                const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+                const p = (n) => String(n).padStart(2, '0');
+                return h > 0 ? h + ':' + p(m) + ':' + p(sec) : m + ':' + p(sec);
+              },
+              durAxis() { return this.bd.durations.axis_max || 0; },
+              durLo() { return this.minDur === null ? 0 : this.minDur; },
+              durHi() { return this.maxDur === null ? this.durAxis() : this.maxDur; },
+              onMinDur(v) { this.minDur = Math.min(v, this.durHi()); },
+              onMaxDur(v) { this.maxDur = Math.max(v, this.durLo()); },
+              durMinParam() { return (this.minDur && this.minDur > 0) ? this.minDur : ''; },
+              durMaxParam() { const ax = this.durAxis(); return (this.maxDur !== null && ax && this.maxDur < ax) ? this.maxDur : ''; },
+              durMaxBin() { return Math.max(1, ...this.bd.durations.bins, 1); },
+              durBarH(c) { return (c / this.durMaxBin()) * 100; },
+              durBinIn(i) { const bs = this.bd.durations.bin_seconds || 0; return (i + 1) * bs > this.durLo() && i * bs < this.durHi(); },
               maxMonth() { let m = 0; for (const b of this.bd.cadence) { const t = b.matched + b.excluded; if (t > m) m = t; } return m || 1; },
               barStyle(b) { const t = b.matched + b.excluded; const h = t ? Math.max(3, (t / this.maxMonth()) * 100) : 0; return 'height:' + h + '%'; },
               segStyle(part, b) { const t = b.matched + b.excluded; const h = t ? (b[part] / t) * 100 : 0; const col = part === 'excluded' ? '#e5534b' : '#3fb950'; return 'height:' + h + '%;background:' + col; },
@@ -169,6 +174,8 @@
                 const q = new URLSearchParams({
                   title_filter_regex: document.getElementById('source_title_filter_regex')?.value || '',
                   title_exclude_regex: document.getElementById('source_title_exclude_regex')?.value || '',
+                  min_duration_seconds: this.durMinParam(),
+                  max_duration_seconds: this.durMaxParam(),
                   config: this.configJson()
                 });
                 try {
@@ -177,6 +184,12 @@
                   const d = await res.json();
                   if (d.error) { this.error = true; this.loaded = true; return; }
                   this.error = false; this.bd = d; this.loaded = true;
+                  const ax = this.durAxis();
+                  if (!this.durReady && ax > 0) {
+                    if (this.minDur === null) this.minDur = 0;
+                    if (this.maxDur === null) this.maxDur = ax;
+                    this.durReady = true;
+                  }
                 } catch (e) { this.error = true; this.loaded = true; }
               }
             }
@@ -185,26 +198,101 @@
           x-on:input.debounce.400ms="refresh()"
           x-on:change="refresh()"
         >
-          <.input
-            field={f[:title_filter_regex]}
-            type="text"
-            label="Title Filter Regex (include)"
-            placeholder="(?i)^How to Bike$"
-            help={title_filter_regex_help()}
-            html_help={true}
-          />
+          <%!-- Duration range slider over a histogram of video lengths --%>
+          <div class="mb-6 rounded-xl border border-stroke p-4 dark:border-strokedark dark:bg-meta-4/30">
+            <div class="mb-3 flex items-center justify-between">
+              <span class="flex items-center gap-1 text-sm font-semibold text-black dark:text-white">
+                Duration range
+                <.info_tip text="Each bar is how many videos fall at that length. Drag the handles to set a minimum and maximum; videos outside the range are filtered out. A handle at either end means no bound." />
+              </span>
+              <span class="font-mono text-xs text-bodydark2">
+                <span x-text="durLo() > 0 ? fmtDur(durLo()) : 'no min'"></span>
+                &ndash; <span x-text="(durAxis() && durHi() < durAxis()) ? fmtDur(durHi()) : 'no max'"></span>
+              </span>
+            </div>
 
-          <.input
-            field={f[:title_exclude_regex]}
-            type="text"
-            label="Title Exclude Regex"
-            placeholder="(?i)compilation|best of|#shorts"
-            help={title_exclude_regex_help()}
-            html_help={true}
-          />
+            <div x-show="durReady" x-cloak>
+              <div class="relative h-16">
+                <div class="absolute inset-x-0 bottom-0 top-0 flex items-end gap-px">
+                  <template x-for="(c, i) in bd.durations.bins" x-bind:key="i">
+                    <div
+                      class="flex-1 rounded-t-sm transition-colors"
+                      x-bind:class="durBinIn(i) ? 'bg-[#3fb950]' : 'bg-bodydark2/25'"
+                      x-bind:style="'height:' + durBarH(c) + '%'"
+                    >
+                    </div>
+                  </template>
+                </div>
+                <input
+                  type="range"
+                  class="range-overlay"
+                  min="0"
+                  x-bind:max="durAxis()"
+                  x-bind:step="bd.durations.bin_seconds || 1"
+                  x-bind:value="durLo()"
+                  x-on:input="onMinDur(+$event.target.value)"
+                />
+                <input
+                  type="range"
+                  class="range-overlay"
+                  min="0"
+                  x-bind:max="durAxis()"
+                  x-bind:step="bd.durations.bin_seconds || 1"
+                  x-bind:value="durHi()"
+                  x-on:input="onMaxDur(+$event.target.value)"
+                />
+              </div>
+              <div class="mt-1 flex justify-between font-mono text-[11px] text-bodydark2">
+                <span>0:00</span>
+                <span x-text="fmtDur(durAxis())"></span>
+              </div>
+            </div>
+            <p x-show="!durReady" class="text-xs text-bodydark2">
+              Reindex this source's metadata to see the length distribution.
+            </p>
 
-          <div class="mb-3 mt-5 flex items-center gap-2 text-sm">
-            <span class="font-semibold">Rules &mdash; match</span>
+            <input
+              type="hidden"
+              id="source_min_duration_seconds"
+              name="source[min_duration_seconds]"
+              x-bind:value="durMinParam()"
+            />
+            <input
+              type="hidden"
+              id="source_max_duration_seconds"
+              name="source[max_duration_seconds]"
+              x-bind:value="durMaxParam()"
+            />
+          </div>
+
+          <%!-- Title filters, side by side, with the verbose guidance behind an info icon --%>
+          <div class="mb-2 flex items-center gap-1 text-sm font-semibold text-black dark:text-white">
+            Title filters
+            <.info_tip text="PCRE-compatible regexes matched against the video title. 'Must match' only keeps titles that match; 'Must not match' drops titles that match (use foo|bar to list several terms). Leave blank to skip." />
+          </div>
+          <div class="grid gap-4 md:grid-cols-2">
+            <.input
+              field={f[:title_filter_regex]}
+              type="text"
+              label="Must match (include)"
+              inputclass="font-mono"
+              placeholder="(?i)^How to Bike$"
+            />
+            <.input
+              field={f[:title_exclude_regex]}
+              type="text"
+              label="Must not match (exclude)"
+              inputclass="font-mono"
+              placeholder="(?i)compilation|best of|#shorts"
+            />
+          </div>
+
+          <div class="mb-3 mt-5 flex flex-wrap items-center gap-2 text-sm">
+            <span class="flex items-center gap-1 font-semibold">
+              Rules
+              <.info_tip text="Build extra conditions on title, description, or duration. 'Match all' requires every rule; 'match any' requires at least one. These stack with the title filters above." />
+            </span>
+            &mdash; match
             <select
               x-model="match"
               class="rounded border border-stroke bg-transparent px-3 py-1.5 dark:border-strokedark dark:bg-meta-4"
@@ -271,15 +359,19 @@
             Invalid filter pattern - fix the regex to see the preview
           </div>
 
-          <div x-show="loaded && !error" x-cloak class="mt-6">
-            <div class="mb-2 flex items-baseline gap-3 text-sm">
+          <div
+            x-show="loaded && !error"
+            x-cloak
+            class="mt-6 rounded-xl border border-stroke p-4 dark:border-strokedark dark:bg-boxdark"
+          >
+            <div class="mb-3 flex flex-wrap items-baseline gap-3 text-sm">
               <span class="font-mono text-xs font-semibold uppercase tracking-wider text-bodydark2">Live preview</span>
               <span><span class="font-bold" style="color:#3fb950" x-text="bd.matched"></span> downloading</span>
               <span><span class="font-bold" style="color:#e5534b" x-text="bd.excluded"></span> filtered out</span>
               <span class="opacity-60">of <span x-text="bd.total"></span></span>
             </div>
 
-            <div class="flex h-28 items-end gap-px overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
+            <div class="flex h-24 items-end gap-px overflow-x-auto border-b border-stroke pb-px dark:border-strokedark">
               <template x-for="(b, i) in bd.cadence" x-bind:key="i">
                 <div
                   class="flex w-1.5 shrink-0 flex-col justify-end"
@@ -296,7 +388,7 @@
               <span x-text="bd.cadence.length && bd.cadence[bd.cadence.length - 1].month"></span>
             </div>
 
-            <div class="mt-4 grid grid-cols-2 gap-3">
+            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <div class="mb-1 text-xs font-bold" style="color:#3fb950">
                   Will download (<span x-text="bd.matched"></span>)
@@ -304,10 +396,11 @@
                 <ul class="max-h-48 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
                   <template x-for="(t, i) in bd.matched_titles" x-bind:key="i">
                     <li
-                      class="truncate border-b border-stroke px-2 py-1 dark:border-strokedark"
-                      x-text="t"
-                      x-bind:title="t"
+                      class="flex items-center justify-between gap-2 border-b border-stroke px-2 py-1 dark:border-strokedark"
+                      x-bind:title="t.title"
                     >
+                      <span class="truncate" x-text="t.title"></span>
+                      <span class="shrink-0 font-mono text-bodydark2" x-text="fmtDur(t.duration)"></span>
                     </li>
                   </template>
                 </ul>
@@ -325,10 +418,11 @@
                 <ul class="max-h-48 overflow-y-auto rounded border border-stroke text-xs dark:border-strokedark">
                   <template x-for="(t, i) in bd.excluded_titles" x-bind:key="i">
                     <li
-                      class="truncate border-b border-stroke px-2 py-1 dark:border-strokedark"
-                      x-text="t"
-                      x-bind:title="t"
+                      class="flex items-center justify-between gap-2 border-b border-stroke px-2 py-1 dark:border-strokedark"
+                      x-bind:title="t.title"
                     >
+                      <span class="truncate" x-text="t.title"></span>
+                      <span class="shrink-0 font-mono text-bodydark2" x-text="fmtDur(t.duration)"></span>
                     </li>
                   </template>
                 </ul>
@@ -414,83 +508,195 @@
           </div>
         </section>
 
-        <.input
-          field={f[:retention_period_days]}
-          type="number"
-          label="Retention Period (days)"
-          min="0"
-          help="Delete media this many days after it was <em>downloaded</em>. Leave blank to keep until other limits apply"
-          html_help={true}
-        />
+        <%!-- Retention period with quick presets --%>
+        <section x-data="{ days: '#{f[:retention_period_days].value}' }" class="mt-2">
+          <div class="mb-2 flex items-center gap-1 text-sm font-semibold text-black dark:text-white">
+            Retention period
+            <.info_tip text="Delete media this many days after it was downloaded, regardless of count or size. Leave blank to keep until the count/size caps below force eviction." />
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input
+              type="number"
+              name="source[retention_period_days]"
+              id="source_retention_period_days"
+              min="0"
+              x-model="days"
+              placeholder="no limit"
+              class="w-40 rounded-lg border-[1.5px] border-form-strokedark bg-form-input px-5 py-3 text-white outline-none transition focus:border-primary"
+            />
+            <span class="text-sm text-bodydark2">days</span>
+            <div class="ml-2 flex flex-wrap gap-1.5">
+              <button
+                :for={{label, value} <- [{"30d", "30"}, {"90d", "90"}, {"6mo", "180"}, {"1yr", "365"}, {"forever", ""}]}
+                type="button"
+                x-on:click={"days = '#{value}'"}
+                x-bind:class={"days === '#{value}' ? 'border-primary text-primary' : 'border-stroke dark:border-strokedark text-bodydark2'"}
+                class="rounded-full border px-3 py-1 text-xs font-medium hover:text-primary"
+              >
+                {label}
+              </button>
+            </div>
+          </div>
+        </section>
 
-        <% preview_url = if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/retention_preview", else: "" %>
+        <% curve_url = if @changeset.data.id, do: ~p"/sources/#{@changeset.data.id}/retention_curve", else: "" %>
         <section
-          class="mt-2"
+          class="mt-6"
           x-data={
             """
             {
-              url: '#{preview_url}',
+              url: '#{curve_url}',
+              sizes: [],
+              total: 0,
+              totalBytes: 0,
               loaded: false,
-              error: false,
-              summary: '',
-              async refresh() {
-                if (!this.url) return;
-                const q = new URLSearchParams({
-                  keep_count: document.getElementById('source_keep_count')?.value || '',
-                  keep_gigabytes: document.getElementById('source_keep_gigabytes')?.value || '',
-                  eviction_strategy: document.getElementById('source_eviction_strategy')?.value || ''
-                });
+              keepCount: '#{f[:keep_count].value}',
+              keepGb: '#{gigabytes_from_bytes(f[:keep_bytes].value)}',
+              strategy: '#{f[:eviction_strategy].value}',
+              init() {
+                this.$watch('strategy', () => this.fetchCurve());
+                this.fetchCurve();
+              },
+              async fetchCurve() {
+                if (!this.url) { this.loaded = true; return; }
                 try {
-                  const res = await fetch(this.url + '?' + q.toString());
-                  if (!res.ok) { this.error = true; this.loaded = true; return; }
+                  const res = await fetch(this.url + '?eviction_strategy=' + encodeURIComponent(this.strategy));
                   const d = await res.json();
-                  this.error = false;
-                  if (d.total === 0) {
-                    this.summary = 'No downloaded media for this source yet';
-                  } else if (d.evict === 0) {
-                    this.summary = 'Within budget - keeping all ' + d.total + ' downloaded items';
-                  } else {
-                    const gb = (d.bytes_to_free / 1000000000).toFixed(1);
-                    this.summary = 'Would keep ' + d.keep + ' of ' + d.total + ', evict ' + d.evict + ' (~' + gb + ' GB freed)';
-                  }
+                  this.sizes = d.sizes || [];
+                  this.total = d.total || 0;
+                  this.totalBytes = d.total_bytes || 0;
                   this.loaded = true;
-                } catch (e) { this.error = true; this.loaded = true; }
-              }
+                } catch (e) { this.loaded = true; }
+              },
+              gb(v) { return v.toFixed(1) + ' GB'; },
+              gbAxis() { return Math.max(1, Math.ceil(this.totalBytes / 1e9)); },
+              kcNum() { return this.keepCount === '' ? this.total : Math.min(parseInt(this.keepCount) || 0, this.total); },
+              sizeCapCount() {
+                if (this.keepGb === '') return this.total;
+                const cap = (parseFloat(this.keepGb) || 0) * 1e9; let s = 0, i = 0;
+                for (; i < this.sizes.length; i++) { s += this.sizes[i]; if (s > cap) break; }
+                return i;
+              },
+              cum(n) { let s = 0; for (let i = 0; i < n && i < this.sizes.length; i++) s += this.sizes[i]; return s; },
+              effKeep() { return Math.min(this.kcNum(), this.sizeCapCount()); },
+              maxSize() { return Math.max(1, ...this.sizes, 1); },
+              barH(i) { return Math.sqrt(this.sizes[i] / this.maxSize()) * 100; },
+              setCount(v) { this.keepCount = (v >= this.total) ? '' : String(v); },
+              setGb(v) { this.keepGb = (v >= this.gbAxis()) ? '' : String(v); }
             }
             """
           }
-          x-init="refresh()"
-          x-on:input.debounce.400ms="refresh()"
-          x-on:change="refresh()"
         >
-          <h3 class="mb-1 mt-6 text-xl font-bold">Capacity</h3>
-          <p class="mb-3 text-sm opacity-70">Cap the kept library by count and/or size; the rest is auto-evicted.</p>
+          <div class="mb-1 flex items-center gap-1 text-xl font-bold">
+            Capacity
+            <.info_tip text="Cap the kept library by count and/or size. The most restrictive cap wins; whatever falls outside it is evicted using the strategy below. The count cap also limits what gets downloaded in the first place." />
+          </div>
+          <p class="mb-4 text-sm opacity-70">Drag against the size of your actual downloaded library.</p>
 
-          <div class="grid gap-4 md:grid-cols-2">
-            <.input
-              field={f[:keep_count]}
-              type="number"
-              label="Keep most recent (count)"
-              min="0"
-              help="Only this many items (by the strategy below) are ever downloaded and kept. Leave blank for no count limit"
-            />
+          <%!-- Library size strip: one bar per downloaded item, ordered most-keepable first --%>
+          <div x-show="loaded && total > 0" x-cloak class="mb-5">
+            <div class="flex h-20 items-end gap-px overflow-hidden rounded-md border border-stroke bg-meta-4/20 p-1 dark:border-strokedark">
+              <template x-for="(s, i) in sizes" x-bind:key="i">
+                <div
+                  class="min-w-px flex-1 rounded-t-sm transition-colors"
+                  x-bind:class="i < effKeep() ? 'bg-meta-3' : 'bg-meta-1/70'"
+                  x-bind:style="'height:' + Math.max(4, barH(i)) + '%'"
+                >
+                </div>
+              </template>
+            </div>
+            <div class="mt-2 rounded-md border border-stroke px-4 py-2.5 text-sm font-medium dark:border-strokedark dark:bg-meta-4">
+              <span class="text-meta-3" x-text="'Keep ' + effKeep()"></span>
+              <span class="opacity-60" x-text="'of ' + total + ' (' + gb(cum(effKeep()) / 1e9) + ')'"></span>
+              <span
+                x-show="effKeep() < total"
+                class="text-meta-1"
+                x-text="' · evict ' + (total - effKeep()) + ' (' + gb((totalBytes - cum(effKeep())) / 1e9) + ' freed)'"
+              >
+              </span>
+            </div>
+          </div>
 
-            <.input
-              type="number"
-              name="source[keep_gigabytes]"
-              id="source_keep_gigabytes"
-              value={gigabytes_from_bytes(f[:keep_bytes].value)}
-              label="Maximum total size (GB)"
-              min="0"
-              step="0.01"
-              help="Trim the library to this size (most restrictive of count/size wins). Leave blank for no size limit"
-            />
+          <%!-- Sliders when there's a downloaded library to measure against --%>
+          <div x-show="loaded && total > 0" x-cloak class="grid gap-6 md:grid-cols-2">
+            <div>
+              <div class="mb-1 flex items-baseline justify-between text-sm">
+                <span class="font-semibold">Keep most recent</span>
+                <span class="font-mono text-bodydark2">
+                  <span x-text="keepCount === '' ? 'all ' + total : kcNum()"></span>
+                  <span class="opacity-60" x-text="'≈ ' + gb(cum(kcNum()) / 1e9)"></span>
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                x-bind:max="total"
+                step="1"
+                x-bind:value="kcNum()"
+                x-on:input="setCount(+$event.target.value)"
+                class="h-2 w-full cursor-pointer appearance-none rounded-full bg-meta-4 accent-primary"
+              />
+            </div>
+            <div>
+              <div class="mb-1 flex items-baseline justify-between text-sm">
+                <span class="font-semibold">Maximum total size</span>
+                <span class="font-mono text-bodydark2">
+                  <span x-text="keepGb === '' ? 'no cap' : gb(parseFloat(keepGb) || 0)"></span>
+                  <span class="opacity-60" x-text="'≈ ' + sizeCapCount() + ' items'"></span>
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                x-bind:max="gbAxis()"
+                step="0.1"
+                x-bind:value="keepGb === '' ? gbAxis() : keepGb"
+                x-on:input="setGb(+$event.target.value)"
+                class="h-2 w-full cursor-pointer appearance-none rounded-full bg-meta-4 accent-primary"
+              />
+            </div>
+          </div>
 
+          <%!-- Fallback to plain inputs before anything is downloaded --%>
+          <div x-show="loaded && total === 0" x-cloak class="grid gap-4 md:grid-cols-2">
+            <div>
+              <label class="mb-2 inline-block text-sm font-medium">Keep most recent (count)</label>
+              <input
+                type="number"
+                min="0"
+                x-model="keepCount"
+                placeholder="no limit"
+                class="w-full rounded-lg border-[1.5px] border-form-strokedark bg-form-input px-5 py-3 text-white outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label class="mb-2 inline-block text-sm font-medium">Maximum total size (GB)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                x-model="keepGb"
+                placeholder="no limit"
+                class="w-full rounded-lg border-[1.5px] border-form-strokedark bg-form-input px-5 py-3 text-white outline-none focus:border-primary"
+              />
+            </div>
+            <p class="text-xs text-bodydark2 md:col-span-2">
+              Nothing downloaded yet, so there's no library to measure. These caps still apply once content arrives -
+              the count cap also limits what gets downloaded.
+            </p>
+          </div>
+
+          <%!-- These hidden fields are what actually submit --%>
+          <input type="hidden" name="source[keep_count]" id="source_keep_count" x-bind:value="keepCount" />
+          <input type="hidden" name="source[keep_gigabytes]" id="source_keep_gigabytes" x-bind:value="keepGb" />
+
+          <div class="mt-5 grid gap-4 md:grid-cols-2">
             <.input
               field={f[:eviction_strategy]}
               options={eviction_strategies()}
               type="select"
               label="Eviction strategy"
+              x-model="strategy"
               help="Which media to keep, and which to evict first when over budget"
             />
 
@@ -502,15 +708,6 @@
               max="100"
               help="Skip eviction if a single run would remove more than this percent of downloaded media. Leave blank to disable"
             />
-          </div>
-
-          <div
-            x-show="loaded"
-            x-cloak
-            class="mt-4 rounded-md border border-stroke px-4 py-3 text-sm font-medium dark:border-strokedark dark:bg-meta-4"
-          >
-            <span x-show="!error" x-text="summary"></span>
-            <span x-show="error" class="text-meta-1">Couldn't compute retention preview</span>
           </div>
         </section>
       </:tab>
