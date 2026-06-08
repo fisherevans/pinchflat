@@ -108,49 +108,13 @@
           </section>
         </div>
       </:tab>
-      <:tab title="Pending" id="pending">
+      <:tab title="Media" id="media">
         {live_render(
           @conn,
-          PinchflatWeb.Sources.MediaItemTableLive,
-          session: %{"source_id" => @source.id, "media_state" => "pending"}
+          PinchflatWeb.Media.MediaTableLive,
+          id: "source-media-table",
+          session: %{"source_id" => @source.id}
         )}
-      </:tab>
-      <:tab title="Downloaded" id="downloaded">
-        {live_render(
-          @conn,
-          PinchflatWeb.Sources.MediaItemTableLive,
-          session: %{"source_id" => @source.id, "media_state" => "downloaded"}
-        )}
-      </:tab>
-      <:tab title="Other" id="other">
-        {live_render(
-          @conn,
-          PinchflatWeb.Sources.MediaItemTableLive,
-          session: %{"source_id" => @source.id, "media_state" => "other"}
-        )}
-      </:tab>
-      <:tab title="Evictions" id="evictions">
-        <%= if match?([_ | _], @evictions) do %>
-          <p class="text-sm mb-3 opacity-70">
-            Media removed by this source's count/size retention budget, newest first.
-          </p>
-          <.table rows={@evictions} table_class="text-black dark:text-white">
-            <:col :let={eviction} label="Title">
-              {eviction.title || eviction.media_id}
-            </:col>
-            <:col :let={eviction} label="Freed">
-              <.readable_filesize byte_size={eviction.bytes_freed} />
-            </:col>
-            <:col :let={eviction} label="Budget">
-              {eviction_reason(eviction)}
-            </:col>
-            <:col :let={eviction} label="Evicted At">
-              <.datetime_in_zone datetime={eviction.inserted_at} />
-            </:col>
-          </.table>
-        <% else %>
-          <p>No budget evictions recorded for this source.</p>
-        <% end %>
       </:tab>
       <:tab title="Tasks" id="tasks">
         <%= if match?([_|_], @pending_tasks) do %>

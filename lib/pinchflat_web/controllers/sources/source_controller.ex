@@ -233,7 +233,6 @@ defmodule PinchflatWeb.Sources.SourceController do
       source: source,
       pending_tasks: pending_tasks,
       cadence: Media.upload_cadence_by_month_for(source),
-      evictions: RetentionEviction.recent_for(source),
       stats: source_stats(source),
       activity: source_weekly_activity(source)
     )

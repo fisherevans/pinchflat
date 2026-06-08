@@ -35,6 +35,9 @@ defmodule Pinchflat.Media.MediaTableColumns do
   @columns_map Map.new(@columns)
   @keys Enum.map(@columns, fn {key, _} -> key end)
 
+  @doc "The closed set of valid `download_status` values (delegates to the schema)."
+  def statuses, do: Pinchflat.Media.MediaItem.download_statuses()
+
   @doc "All columns as an ordered list of `{key, spec}`."
   def all, do: @columns
 
