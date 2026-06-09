@@ -8,6 +8,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   use Pinchflat.Media.MediaQuery
 
   alias Pinchflat.Repo
+  alias Pinchflat.Metrics
 
   @doc """
   Wraps a function that may change the number of pending  or downloaded
@@ -34,6 +35,9 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   def send_new_media_notification(_, _, count) when count <= 0, do: :ok
 
   def send_new_media_notification(servers, source, changed_count) do
+    # The single funnel for both slow- and fast-index "new items found" deltas.
+    Metrics.count("index.new_items", changed_count, %{source_id: source.id})
+
     opts = [
       title: "[Pinchflat] New media found",
       body: "Found #{changed_count} new media item(s) for #{source.custom_name}. Downloading them now"

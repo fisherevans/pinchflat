@@ -10,8 +10,10 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Sources
+  alias Pinchflat.Metrics
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Utils.StringUtils
+  alias Pinchflat.Metrics.ErrorClassifier
   alias Pinchflat.Metadata.NfoBuilder
   alias Pinchflat.Metadata.MetadataParser
   alias Pinchflat.Metadata.MetadataFileHelpers
@@ -34,19 +36,31 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   def download_for_media_item(%MediaItem{} = media_item, override_opts \\ []) do
     case attempt_download_and_update_for_media_item(media_item, override_opts) do
       {:ok, media_item} ->
+        Metrics.count("download.completed", 1, %{source_id: media_item.source_id})
         # Returns {:ok, %MediaItem{}}
         Media.update_media_item(media_item, %{last_error: nil})
 
       {:error, error_atom, message} ->
+        record_download_failure(media_item, message)
         Media.update_media_item(media_item, %{last_error: StringUtils.wrap_string(message)})
 
         {:error, error_atom, message}
 
       {:recovered, media_item, message} ->
+        Metrics.count("download.completed", 1, %{source_id: media_item.source_id})
+        Metrics.count("download.recovered", 1, %{source_id: media_item.source_id})
         {:ok, updated_media_item} = Media.update_media_item(media_item, %{last_error: StringUtils.wrap_string(message)})
 
         {:recovered, updated_media_item, message}
     end
+  end
+
+  # A failed download: a counter tagged by classified cause (so you can alert specifically on
+  # `reason:auth_needed` etc.) plus an event carrying the raw message for context.
+  defp record_download_failure(media_item, message) do
+    tags = %{source_id: media_item.source_id, reason: ErrorClassifier.classify(message)}
+    Metrics.count("download.failed", 1, tags)
+    Metrics.event("Download failed", message, alert_type: "error", tags: tags)
   end
 
   # Looks complicated, but here's the key points:

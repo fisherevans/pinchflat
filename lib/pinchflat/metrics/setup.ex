@@ -5,18 +5,28 @@ defmodule Pinchflat.Metrics.Setup do
   are off nothing is started or attached and there is zero overhead.
   """
 
-  @doc "Supervision children for the metrics subsystem (the buffer), or [] when disabled."
+  @doc "Supervision children for the metrics subsystem, or [] when disabled."
   def children do
-    if enabled?(), do: [Pinchflat.Metrics.Buffer], else: []
+    if enabled?() do
+      [
+        Pinchflat.Metrics.Buffer,
+        {:telemetry_poller,
+         name: Pinchflat.Metrics.Poller,
+         period: :timer.seconds(15),
+         measurements: [{Pinchflat.Metrics.Poller, :measure, []}]}
+      ]
+    else
+      []
+    end
   end
 
   @doc """
-  Attaches the telemetry handlers and logger handler. Called once at app start. No-op when
-  disabled. Handlers are added incrementally as instrumentation lands.
+  Attaches the telemetry handlers (and, later, the logger handler). Called once at app start.
+  No-op when disabled.
   """
   def attach do
     if enabled?() do
-      :ok
+      Pinchflat.Metrics.ObanHandler.attach()
     end
 
     :ok

@@ -13,6 +13,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Tasks
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Metrics
   alias Pinchflat.Media.FileSyncing
   alias Pinchflat.Downloading.MediaDownloader
   alias Pinchflat.Organizing.MediaOrganizer
@@ -96,11 +97,15 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
     case MediaDownloader.download_for_media_item(media_item, override_opts) do
       {:ok, downloaded_media_item} ->
+        size = compute_media_filesize(downloaded_media_item)
+
         {:ok, updated_media_item} =
           Media.update_media_item(downloaded_media_item, %{
-            media_size_bytes: compute_media_filesize(downloaded_media_item),
+            media_size_bytes: size,
             media_redownloaded_at: get_redownloaded_at(is_quality_upgrade)
           })
+
+        if size, do: Metrics.count("download.bytes", size, %{source_id: updated_media_item.source_id})
 
         :ok = FileSyncing.delete_outdated_files(media_item, updated_media_item)
         run_user_script(:media_downloaded, updated_media_item)

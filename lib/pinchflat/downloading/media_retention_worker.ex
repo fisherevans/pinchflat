@@ -12,6 +12,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
 
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Metrics
   alias Pinchflat.Sources.Source
   alias Pinchflat.Downloading.RetentionPolicy
   alias Pinchflat.Downloading.RetentionEviction
@@ -46,6 +47,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
       |> Repo.all()
 
     Logger.info("Culling #{length(cullable_media)} media items past their retention date")
+    record_retention_metrics("retention.culled", "retention", cullable_media)
 
     Enum.each(cullable_media, fn media_item ->
       # Setting `prevent_download` does what it says on the tin, but `culled_at` is purely informational.
@@ -68,6 +70,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
       |> Repo.all()
 
     Logger.info("Deleting #{length(deletable_media)} media items that are from before the source cutoff")
+    record_retention_metrics("retention.culled", "cutoff", deletable_media)
 
     Enum.each(deletable_media, fn media_item ->
       # Note that I'm not setting `prevent_download` on the media_item here.
@@ -95,6 +98,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
 
       if within_delete_guard?(source, candidates, downloaded) do
         Logger.info("Evicting #{length(candidates)} media items over budget for source #{source.id}")
+        record_retention_metrics("retention.evicted", "budget", candidates, source)
 
         Enum.each(candidates, fn media_item ->
           # `last_evicted_at`/`last_bytes_freed` are the denormalized cache that lets the
@@ -117,6 +121,17 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
         )
       end
     end)
+  end
+
+  defp record_retention_metrics(count_metric, pass, items, source \\ nil)
+  defp record_retention_metrics(_count_metric, _pass, [], _source), do: :ok
+
+  defp record_retention_metrics(count_metric, pass, items, source) do
+    tags = if source, do: %{pass: pass, source_id: source.id}, else: %{pass: pass}
+    bytes = items |> Enum.map(&(&1.media_size_bytes || 0)) |> Enum.sum()
+
+    Metrics.count(count_metric, length(items), tags)
+    Metrics.count("retention.bytes_freed", bytes, tags)
   end
 
   defp sources_with_budget do

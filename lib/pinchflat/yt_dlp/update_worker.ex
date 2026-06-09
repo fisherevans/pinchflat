@@ -8,6 +8,7 @@ defmodule Pinchflat.YtDlp.UpdateWorker do
   require Logger
 
   alias __MODULE__
+  alias Pinchflat.Metrics
   alias Pinchflat.Settings
 
   @doc """
@@ -35,7 +36,13 @@ defmodule Pinchflat.YtDlp.UpdateWorker do
     {:ok, yt_dlp_version} = yt_dlp_runner().version()
     Settings.set(yt_dlp_version: yt_dlp_version)
 
+    Metrics.count("ytdlp.update.success")
     :ok
+  rescue
+    err ->
+      Metrics.count("ytdlp.update.failed")
+      Metrics.event("yt-dlp update failed", Exception.message(err), alert_type: "error")
+      reraise err, __STACKTRACE__
   end
 
   defp yt_dlp_runner do
