@@ -56,7 +56,11 @@ config :pinchflat, Oban,
     media_collection_indexing: yt_dlp_worker_count,
     media_fetching: yt_dlp_worker_count,
     remote_metadata: yt_dlp_worker_count,
-    local_data: 8
+    local_data: 8,
+    # The organizer does bulk renames + nfo writes + (occasional) re-mux over the NFS media
+    # mount. Serialize it app-wide so it can't fan out across sources or contend with the
+    # local_data workers (retention, status backfill). See Pinchflat.Organizing.MediaOrganizeWorker.
+    organizing: 1
   ],
   plugins: [
     # Keep old jobs for 30 days for display in the UI

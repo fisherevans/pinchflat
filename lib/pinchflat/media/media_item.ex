@@ -53,7 +53,9 @@ defmodule Pinchflat.Media.MediaItem do
     :status_reason,
     :status_computed_at,
     :last_evicted_at,
-    :last_bytes_freed
+    :last_bytes_freed,
+    # Hash of the last-written mp4 tag inputs (see Pinchflat.Organizing.MediaOrganizer)
+    :mp4_tags_hash
   ]
 
   # Closed, mutually-exclusive lifecycle states. Resolved by precedence in
@@ -116,6 +118,7 @@ defmodule Pinchflat.Media.MediaItem do
     field :status_computed_at, :utc_datetime
     field :last_evicted_at, :utc_datetime
     field :last_bytes_freed, :integer
+    field :mp4_tags_hash, :string
 
     field :matching_search_term, :string, virtual: true
 

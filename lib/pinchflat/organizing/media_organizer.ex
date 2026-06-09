@@ -37,11 +37,19 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
     source = Repo.preload(source, :media_profile)
 
     if organizing_enabled?(source) do
-      plans =
+      items =
         source
         |> Media.list_downloaded_media_items_for()
         |> Enum.map(&%{&1 | source: source})
-        |> Enum.map(&plan_for(&1, opts))
+
+      # List each distinct directory exactly once per run (presence + in-flight detection
+      # are derived from this), instead of a readdir per item - O(dirs), not O(items^2),
+      # which matters a lot when /media is an NFS mount.
+      listings = directory_listings(items)
+
+      plans =
+        items
+        |> Enum.map(&plan_for(&1, opts, listings))
         |> Enum.reject(&is_nil/1)
 
       plans |> Enum.map(&vacate/1) |> Enum.each(&place/1)
@@ -55,8 +63,9 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
   @doc "Organizes a single media item. Returns :ok | :skip."
   def organize_media_item(%MediaItem{} = media_item, opts \\ []) do
     media_item = Repo.preload(media_item, source: :media_profile)
+    listings = directory_listings([media_item])
 
-    case plan_for(media_item, opts) do
+    case plan_for(media_item, opts, listings) do
       nil -> :skip
       plan -> plan |> vacate() |> place() |> then(fn _ -> :ok end)
     end
@@ -70,15 +79,16 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
 
   # --- planning ---
 
-  defp plan_for(%MediaItem{media_filepath: nil}, _opts), do: nil
+  defp plan_for(%MediaItem{media_filepath: nil}, _opts, _listings), do: nil
 
-  defp plan_for(%MediaItem{} = media_item, opts) do
+  defp plan_for(%MediaItem{} = media_item, opts, listings) do
     current = media_item.media_filepath
     force = Keyword.get(opts, :force, false)
+    entries = Map.get(listings, Path.dirname(current), MapSet.new())
 
     cond do
-      not File.exists?(current) -> nil
-      inflight?(current) -> nil
+      not MapSet.member?(entries, Path.basename(current)) -> nil
+      inflight?(entries) -> nil
       true -> build_plan(media_item, current, force)
     end
   end
@@ -138,14 +148,10 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
   # Phase 2: place media + subs at their final names, retag the mp4, rewrite the .nfo,
   # and persist the new paths.
   defp place(%{move?: true} = plan) do
-    FilesystemUtils.cp_p!(plan.media_tmp, plan.media)
-    File.rm(plan.media_tmp)
+    move_file(plan.media_tmp, plan.media)
 
     Enum.each(plan.subs, fn s ->
-      if File.exists?(s.tmp) do
-        FilesystemUtils.cp_p!(s.tmp, s.desired)
-        File.rm(s.tmp)
-      end
+      if File.exists?(s.tmp), do: move_file(s.tmp, s.desired)
     end)
 
     if plan.nfo_current && not same_path?(plan.nfo_current, plan.nfo) do
@@ -157,19 +163,39 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
 
   defp place(plan), do: finalize(plan)
 
+  # The temp and its final name are always in the same show directory, so this is a
+  # metadata-only `File.rename` (atomic, no bytes over the wire) - never a copy. The
+  # cross-device branch only fires if /media ever spans filesystems, which it does not on
+  # the deployment this guards.
+  defp move_file(src, dest) do
+    dest_dir = Path.dirname(dest)
+    unless Path.dirname(src) == dest_dir, do: File.mkdir_p!(dest_dir)
+
+    case File.rename(src, dest) do
+      :ok ->
+        :ok
+
+      {:error, :exdev} ->
+        FilesystemUtils.cp_p!(src, dest)
+        File.rm(src)
+
+      {:error, reason} ->
+        raise "MediaOrganizer could not move #{src} -> #{dest}: #{inspect(reason)}"
+    end
+  end
+
   defp finalize(plan) do
     media_item = plan.media_item
-    retag_mp4(plan.media, media_item)
+    hash = mp4_tags_hash(media_item)
+    retagged? = maybe_retag_mp4(plan.media, media_item, hash)
     write_nfo(plan.nfo, media_item)
 
     subtitle_filepaths = Enum.map(plan.subs, fn s -> [s.lang, s[:desired] || s.current] end)
 
-    {:ok, _} =
-      Media.update_media_item(media_item, %{
-        media_filepath: plan.media,
-        nfo_filepath: plan.nfo,
-        subtitle_filepaths: subtitle_filepaths
-      })
+    attrs = %{media_filepath: plan.media, nfo_filepath: plan.nfo, subtitle_filepaths: subtitle_filepaths}
+    attrs = if retagged?, do: Map.put(attrs, :mp4_tags_hash, hash), else: attrs
+
+    {:ok, _} = Media.update_media_item(media_item, attrs)
 
     plan
   end
@@ -216,6 +242,22 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
 
   # --- file/metadata writes ---
 
+  # Only re-mux the mp4 when the embedded tag inputs (title + cleaned plot) actually changed
+  # from what was last written. A pure season renumber changes the filename, not the tags, so
+  # it skips ffmpeg entirely - avoiding a full-file read + temp write over NFS per item.
+  defp maybe_retag_mp4(media_filepath, media_item, hash) do
+    if media_item.mp4_tags_hash == hash do
+      false
+    else
+      retag_mp4(media_filepath, media_item)
+      true
+    end
+  end
+
+  defp mp4_tags_hash(media_item) do
+    :crypto.hash(:sha256, [media_item.title || "", "\0", clean_plot(media_item)]) |> Base.encode16(case: :lower)
+  end
+
   defp retag_mp4(media_filepath, media_item) do
     tags = [
       title: media_item.title || "",
@@ -259,14 +301,24 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
   defp season_strategy(%Source{media_profile: %{season_strategy: strategy}}), do: strategy
   defp season_strategy(_source), do: :none
 
-  defp inflight?(media_filepath) do
-    dir = Path.dirname(media_filepath)
+  # One readdir per distinct directory, reused for both presence and in-flight checks.
+  defp directory_listings(items) do
+    items
+    |> Enum.map(& &1.media_filepath)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&Path.dirname/1)
+    |> Enum.uniq()
+    |> Map.new(fn dir -> {dir, MapSet.new(list_dir(dir))} end)
+  end
 
+  defp list_dir(dir) do
     case File.ls(dir) do
-      {:ok, entries} -> Enum.any?(entries, fn e -> String.ends_with?(e, @inflight_suffixes) end)
-      _ -> false
+      {:ok, entries} -> entries
+      _ -> []
     end
   end
+
+  defp inflight?(entries), do: Enum.any?(entries, fn e -> String.ends_with?(e, @inflight_suffixes) end)
 
   defp mp4_tagger, do: Application.get_env(:pinchflat, :mp4_tagger_runner)
 end
