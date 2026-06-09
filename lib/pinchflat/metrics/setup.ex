@@ -27,6 +27,7 @@ defmodule Pinchflat.Metrics.Setup do
   def attach do
     if enabled?() do
       Pinchflat.Metrics.ObanHandler.attach()
+      Pinchflat.Metrics.LoggerHandler.attach()
     end
 
     :ok

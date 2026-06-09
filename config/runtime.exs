@@ -83,7 +83,8 @@ if String.length(datadog_api_key) > 0 do
 
   config :pinchflat,
     metrics_enabled: true,
-    metrics_backend: Pinchflat.Metrics.Backends.Datadog
+    metrics_backend: Pinchflat.Metrics.Backends.Datadog,
+    metrics_log_level: String.to_existing_atom(System.get_env("DATADOG_LOG_LEVEL", "warning"))
 
   config :pinchflat, Pinchflat.Metrics.Backends.Datadog,
     api_key: datadog_api_key,
