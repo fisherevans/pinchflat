@@ -2,6 +2,8 @@
 
 This is the product roadmap for this fork of [Pinchflat](https://github.com/kieraneglin/pinchflat). It is a definition/scoping document, not a design spec - design and implementation come after we agree on the shape here.
 
+> **Status (2026-06-09):** Epics 0, 1, 3, 4, 7, 8, and 10 are delivered and their GitHub milestones are closed. A unified media table (persisted status, presets, server-side saved views, global `/media` page) also landed beyond the original epics. Still open: Epic 2 (explicit last-N selection, #18), Epic 5 (output naming/templating), Epic 6 (season/episode as a template var #24 - layout/numbering itself shipped via the organizer), and Epic 9 (channel search). What is actually built is documented in [`fork-features.md`](fork-features.md); this file remains the forward-looking plan.
+
 ## Why this fork exists
 
 The goal is "YouTube as TV": a fresh, bounded, well-presented library of recent content from creators I like, surfaced through Plex/Jellyfin. It is explicitly **not** a complete archive. The operating principle that everything below serves:
