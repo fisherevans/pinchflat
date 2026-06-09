@@ -30,25 +30,14 @@ approximation during migration, then a precise per-source recompute kicked off a
 
 ---
 
-## Prerequisites (one-time, before the image exists)
+## Prerequisites
 
-The fork has **never published a Docker image**. The release is tagged (`v2026.6.9`) and
-the CI workflow is ready, but **GitHub Actions on a fork must be enabled by hand once**:
+The image is **already built and published** (multi-arch amd64 + arm64) and the GHCR
+package is **public**, so no registry auth is needed:
 
-1. Open `https://github.com/fisherevans/pinchflat/actions` and click
-   **"I understand my workflows, go ahead and enable them."**
-2. Re-trigger the build for the existing tag (enabling Actions does not replay past pushes):
-   ```bash
-   git push origin :refs/tags/v2026.6.9   # delete remote tag
-   git push origin v2026.6.9              # re-push -> triggers "Docker Release"
-   ```
-   Watch it: `gh run watch --repo fisherevans/pinchflat`. It builds multi-arch
-   (amd64 + arm64) and pushes `ghcr.io/fisherevans/pinchflat:v2026.6.9`.
-3. **Make the GHCR package pullable** by the server. The package is private by default:
-   - Easiest: make it public - `https://github.com/users/fisherevans/packages/container/pinchflat/settings` -> Change visibility -> Public. Then no auth is needed to pull.
-   - Or keep it private and `docker login ghcr.io -u fisherevans -p <PAT-with-read:packages>` on the host.
+- `ghcr.io/fisherevans/pinchflat:v2026.6.9` (also tagged `latest`)
 
-Confirm the image is pullable before touching the running container:
+Confirm it pulls on the host before touching the running container:
 ```bash
 docker pull ghcr.io/fisherevans/pinchflat:v2026.6.9
 ```
@@ -215,9 +204,8 @@ on-disk files won't revert automatically.
 
 ---
 
-## One open item for the human
+## Status
 
-The CI image build is blocked on the one-time **"enable Actions" click** on the fork (see
-Prerequisites). Until that's done and the package is pullable, the deploy can't proceed.
-Everything else - code, version `2026.6.9`, tag `v2026.6.9`, and the fixed GHCR-only
-workflow - is already pushed.
+Ready to deploy. Code, version `2026.6.9`, tag `v2026.6.9`, the GHCR-only release workflow,
+and the published **public multi-arch image** are all in place. Nothing is blocking - start
+at "Pre-deploy" above.
