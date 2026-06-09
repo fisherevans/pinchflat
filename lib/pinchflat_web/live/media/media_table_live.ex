@@ -141,7 +141,8 @@ defmodule PinchflatWeb.Media.MediaTableLive do
       total: result.total,
       filtered_total: result.filtered_total,
       page: result.page,
-      total_pages: result.total_pages
+      total_pages: result.total_pages,
+      counts: Media.media_status_counts(a.source_id)
     )
   end
 
@@ -223,6 +224,7 @@ defmodule PinchflatWeb.Media.MediaTableLive do
           class={["rounded-full px-3 py-1 text-sm", view_pill_class(@active_view == preset.slug)]}
         >
           {preset.name}
+          <span class="ml-1 opacity-70">{preset_count(@counts, preset)}</span>
         </button>
 
         <span
@@ -467,6 +469,8 @@ defmodule PinchflatWeb.Media.MediaTableLive do
 
   defp view_pill_class(true), do: "bg-primary text-white"
   defp view_pill_class(false), do: "bg-meta-4 text-bodydark hover:text-white"
+
+  defp preset_count(counts, preset), do: Map.get(counts, preset.config["status"], 0)
 
   defp maybe_date(nil), do: "-"
   defp maybe_date(datetime), do: Calendar.strftime(datetime, "%Y-%m-%d")

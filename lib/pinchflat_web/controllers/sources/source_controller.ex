@@ -220,7 +220,7 @@ defmodule PinchflatWeb.Sources.SourceController do
     })
   end
 
-  def show(conn, %{"id" => id}) do
+  def show(conn, %{"id" => id} = params) do
     source = Repo.preload(Sources.get_source!(id), :media_profile)
 
     pending_tasks =
@@ -231,6 +231,7 @@ defmodule PinchflatWeb.Sources.SourceController do
     render(conn, :show,
       page_title: source.custom_name,
       source: source,
+      media_view: params["view"],
       pending_tasks: pending_tasks,
       cadence: Media.upload_cadence_by_month_for(source),
       stats: source_stats(source),

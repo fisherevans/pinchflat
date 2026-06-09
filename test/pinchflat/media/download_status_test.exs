@@ -112,6 +112,23 @@ defmodule Pinchflat.Media.DownloadStatusTest do
       mi = item(source, %{title: "blocked content"})
       assert {:filtered, "filter_rule"} = DownloadStatus.compute(mi, mi.source)
     end
+
+    test "excluded by the keep-count cap" do
+      source = source_fixture(%{keep_count: 1, eviction_strategy: :oldest})
+      # the "oldest" strategy evicts oldest first, so keep_count=1 keeps the newest item
+      _kept = item(source, %{title: "newer", uploaded_at: ~U[2024-01-01 00:00:00Z]})
+      capped = item(source, %{title: "older", uploaded_at: ~U[2020-01-01 00:00:00Z]})
+
+      assert {:filtered, "keep_count_cap"} = DownloadStatus.compute(capped, capped.source)
+    end
+
+    test "a rule takes precedence over the cap when both could apply" do
+      config = %{"match" => "all", "rules" => [%{"field" => "title", "operator" => "excludes", "value" => "blocked"}]}
+      source = source_fixture(%{keep_count: 1, filter_config: config})
+      mi = item(source, %{title: "blocked content"})
+
+      assert {:filtered, "filter_rule"} = DownloadStatus.compute(mi, mi.source)
+    end
   end
 
   describe "create/update hooks persist status" do

@@ -113,7 +113,7 @@
           @conn,
           PinchflatWeb.Media.MediaTableLive,
           id: "source-media-table",
-          session: %{"source_id" => @source.id}
+          session: %{"source_id" => @source.id, "view" => @media_view}
         )}
       </:tab>
       <:tab title="Tasks" id="tasks">

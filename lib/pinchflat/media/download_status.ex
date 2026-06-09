@@ -31,6 +31,7 @@ defmodule Pinchflat.Media.DownloadStatus do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Media.FilterRules
   alias Pinchflat.Sources.Source
   alias Pinchflat.Downloading.RetentionEviction
 
@@ -131,9 +132,10 @@ defmodule Pinchflat.Media.DownloadStatus do
     Date.compare(DateTime.to_date(media_item.uploaded_at), source.download_cutoff_date) == :lt
   end
 
-  # Advisory, in-memory derivation of which gate excluded an item. The precise gates
-  # (cutoff/title/duration/format) are exact; the cap/structured-rule case is coarse
-  # because those depend on cross-row ranking and compiled JSON rules.
+  # Which gate excluded an item. The simple gates (cutoff/title/duration/format) are checked
+  # in-memory; the structured-rule and keep-count-cap cases need a query (compiled JSON rules
+  # / cross-row ranking) so they're evaluated precisely rather than guessed from config
+  # presence - a source can have both a rule and a cap, and only one is the actual cause.
   defp filter_reason(media_item, source) do
     cond do
       before_cutoff_start?(media_item, source) -> "cutoff_start"
@@ -142,10 +144,30 @@ defmodule Pinchflat.Media.DownloadStatus do
       title_exclude_fails?(media_item, source) -> "title_exclude"
       duration_fails?(media_item, source) -> "duration"
       format_fails?(media_item, source) -> "format_preference"
-      not is_nil(source.keep_count) -> "keep_count_cap"
-      has_filter_rules?(source) -> "filter_rule"
+      excluded_by_filter_rules?(media_item, source) -> "filter_rule"
+      excluded_by_keep_count?(media_item, source) -> "keep_count_cap"
       true -> "filtered"
     end
+  end
+
+  defp excluded_by_filter_rules?(media_item, source) do
+    has_filter_rules?(source) and
+      not Repo.exists?(
+        MediaQuery.new()
+        |> where([m], m.id == ^media_item.id)
+        |> FilterRules.apply_rules(source)
+      )
+  end
+
+  defp excluded_by_keep_count?(_media_item, %Source{keep_count: nil}), do: false
+
+  defp excluded_by_keep_count?(media_item, _source) do
+    not Repo.exists?(
+      MediaQuery.new()
+      |> MediaQuery.require_assoc(:source)
+      |> where([m], m.id == ^media_item.id)
+      |> where(^MediaQuery.within_keep_count_window())
+    )
   end
 
   defp before_cutoff_start?(%MediaItem{uploaded_at: nil}, _source), do: false
