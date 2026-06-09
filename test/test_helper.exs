@@ -13,6 +13,11 @@ Application.put_env(:pinchflat, :user_script_runner, UserScriptRunnerMock)
 Mox.defmock(Mp4TaggerRunnerMock, for: Pinchflat.Metadata.Mp4TaggerCommandRunner)
 Application.put_env(:pinchflat, :mp4_tagger_runner, Mp4TaggerRunnerMock)
 
+# Metrics stay disabled by default in tests (metrics_enabled: false), so the facade no-ops
+# and existing tests are unaffected. Tests that exercise the framework enable it explicitly
+# and point the backend at this mock.
+Mox.defmock(MetricsBackendMock, for: Pinchflat.Metrics.Backend)
+
 ExUnit.start()
 Ecto.Adapters.SQL.Sandbox.mode(Pinchflat.Repo, :manual)
 Faker.start()

@@ -10,28 +10,29 @@ defmodule Pinchflat.Application do
   def start(_type, _args) do
     check_and_update_timezone()
     attach_oban_telemetry()
+    Pinchflat.Metrics.Setup.attach()
     Logger.add_handlers(:pinchflat)
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    [
-      Pinchflat.PromEx,
-      PinchflatWeb.Telemetry,
-      Pinchflat.Repo,
-      # Must be before startup tasks
-      Pinchflat.Boot.PreJobStartupTasks,
-      {Oban, Application.fetch_env!(:pinchflat, Oban)},
-      Pinchflat.Boot.PostJobStartupTasks,
-      {DNSCluster, query: Application.get_env(:pinchflat, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Pinchflat.PubSub},
-      # Start the Finch HTTP client for sending emails
-      {Finch, name: Pinchflat.Finch},
-      # Start a worker by calling: Pinchflat.Worker.start_link(arg)
-      # {Pinchflat.Worker, arg},
-      # Start to serve requests, typically the last entry (except for the post-boot tasks)
-      PinchflatWeb.Endpoint,
-      Pinchflat.Boot.PostBootStartupTasks
-    ]
+    # Must be before startup tasks
+    # Start the Finch HTTP client for sending emails
+    # Start a worker by calling: Pinchflat.Worker.start_link(arg)
+    # {Pinchflat.Worker, arg},
+    # Start to serve requests, typically the last entry (except for the post-boot tasks)
+    ([
+       Pinchflat.PromEx,
+       PinchflatWeb.Telemetry,
+       Pinchflat.Repo,
+       Pinchflat.Boot.PreJobStartupTasks,
+       {Oban, Application.fetch_env!(:pinchflat, Oban)},
+       Pinchflat.Boot.PostJobStartupTasks,
+       {DNSCluster, query: Application.get_env(:pinchflat, :dns_cluster_query) || :ignore},
+       {Phoenix.PubSub, name: Pinchflat.PubSub},
+       {Finch, name: Pinchflat.Finch},
+       PinchflatWeb.Endpoint,
+       Pinchflat.Boot.PostBootStartupTasks
+     ] ++ Pinchflat.Metrics.Setup.children())
     |> Supervisor.start_link(strategy: :one_for_one, name: Pinchflat.Supervisor)
   end
 

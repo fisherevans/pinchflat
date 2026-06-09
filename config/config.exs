@@ -29,7 +29,11 @@ config :pinchflat,
   expose_feed_endpoints: false,
   file_watcher_poll_interval: 1000,
   timezone: "UTC",
-  base_route_path: "/"
+  base_route_path: "/",
+  # Behavioral metrics export. Off by default; enabled in runtime.exs when DATADOG_API_KEY
+  # is set. `metrics_backend` is the swappable sink (see Pinchflat.Metrics.Backend).
+  metrics_enabled: false,
+  metrics_backend: Pinchflat.Metrics.Backends.Noop
 
 config :pinchflat, Pinchflat.Repo,
   journal_mode: :wal,

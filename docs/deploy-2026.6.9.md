@@ -38,6 +38,7 @@ package is **public**, so no registry auth is needed:
 - `ghcr.io/fisherevans/pinchflat:v2026.6.9` (also tagged `latest`)
 
 Confirm it pulls on the host before touching the running container:
+
 ```bash
 docker pull ghcr.io/fisherevans/pinchflat:v2026.6.9
 ```
@@ -107,6 +108,7 @@ The goal here is "did it boot, migrate, and render without errors." If any of th
       populated, not all-zero and not all-"pending".
 
 Optional DB-level check (find the `.sqlite3` file under `${CONFIG_MOUNT}/pinchflat`):
+
 ```bash
 sqlite3 <db> "PRAGMA table_info(media_items);" | grep download_status   # column exists
 sqlite3 <db> ".tables" | grep media_table_views                        # table exists
@@ -119,10 +121,8 @@ Why an hour: the precise status backfill runs as `local_data` Oban jobs after bo
 source, and yt-dlp self-update / metadata jobs also run early. An hour is enough for a
 library of a few thousand items to finish on a homelab box.
 
-- [ ] **Backfill complete**: no rows left unclassified.
-      ```bash
-      sqlite3 <db> "SELECT COUNT(*) FROM media_items WHERE status_computed_at IS NULL;"  # -> 0
-      ```
+- [ ] **Backfill complete**: no rows left unclassified -
+      `sqlite3 <db> "SELECT COUNT(*) FROM media_items WHERE status_computed_at IS NULL;"` returns 0.
 - [ ] `local_data` Oban queue has drained (no piled-up `RecomputeDownloadStatusWorker` jobs
       stuck retrying). Check the Tasks tab on a source, or the `oban_jobs` table for
       `state='retryable'`/`'available'` backlog.
@@ -141,10 +141,8 @@ items get a status at insert and that downloads/culls move items between statuse
 the real workers - not just the one-time backfill.
 
 - [ ] New items appeared from a slow/fast index cycle and have a non-null `download_status`
-      (they were classified at insert, not left blank):
-      ```bash
-      sqlite3 <db> "SELECT COUNT(*) FROM media_items WHERE download_status IS NULL;"  # -> 0
-      ```
+      (classified at insert, not left blank) -
+      `sqlite3 <db> "SELECT COUNT(*) FROM media_items WHERE download_status IS NULL;"` returns 0.
 - [ ] Items that downloaded in the last day show `downloaded` with a real `media_size_bytes`;
       items the retention pass deleted show `culled` with a `status_reason`
       (`culled_retention` / `culled_cutoff`).

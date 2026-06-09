@@ -69,6 +69,32 @@ config :pinchflat, Oban,
      ]}
   ]
 
+# Behavioral metrics export. Off unless DATADOG_API_KEY is set, in which case operational
+# metrics/events/logs are pushed straight to the Datadog HTTP intake (no agent). Read here
+# (not only in the prod block) so it can also be exercised in dev. The backend is swappable.
+datadog_api_key = System.get_env("DATADOG_API_KEY", "")
+
+if String.length(datadog_api_key) > 0 do
+  default_hostname =
+    case :inet.gethostname() do
+      {:ok, hostname} -> to_string(hostname)
+      _ -> "pinchflat"
+    end
+
+  config :pinchflat,
+    metrics_enabled: true,
+    metrics_backend: Pinchflat.Metrics.Backends.Datadog
+
+  config :pinchflat, Pinchflat.Metrics.Backends.Datadog,
+    api_key: datadog_api_key,
+    site: System.get_env("DATADOG_SITE", "datadoghq.com"),
+    service: System.get_env("DATADOG_SERVICE", "pinchflat"),
+    env: System.get_env("DATADOG_ENV"),
+    tags: System.get_env("DATADOG_TAGS", ""),
+    log_level: System.get_env("DATADOG_LOG_LEVEL", "warning"),
+    hostname: System.get_env("DATADOG_HOSTNAME", default_hostname)
+end
+
 if config_env() == :prod do
   # Various paths. These ones shouldn't be tweaked if running in Docker
   media_path = System.get_env("MEDIA_PATH", "/downloads")
