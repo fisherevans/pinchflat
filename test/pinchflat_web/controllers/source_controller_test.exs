@@ -391,22 +391,54 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "title_clean_preview" do
-    test "returns original -> cleaned pairs for the source's media", %{conn: conn} do
+    test "runs the chain against the source's indexed titles and returns a per-step trace", %{conn: conn} do
       source = source_fixture(%{custom_name: "Danny Go"})
 
       media_item_fixture(%{
         source_id: source.id,
         title: "Magnet MANIA!",
-        original_title: "Magnet MANIA! | Danny Go!"
+        original_title: "Magnet MANIA! | Danny Go!",
+        uploaded_at: ~U[2024-01-01 00:00:00Z]
       })
 
-      conn = get(conn, ~p"/sources/#{source.id}/title_clean_preview?#{[aliases: ["Danny Go"]]}")
+      chain =
+        Phoenix.json_library().encode!(%{
+          "steps" => [%{"enabled" => true, "find" => " \\| Danny Go!", "replace" => "", "condition" => %{}}]
+        })
+
+      conn = get(conn, ~p"/sources/#{source.id}/title_clean_preview?#{[chain: chain]}")
       body = json_response(conn, 200)
 
       assert body["total"] == 1
+      assert body["changed"] == 1
 
-      assert [%{"original" => "Magnet MANIA! | Danny Go!", "cleaned" => "Magnet MANIA", "changed" => true}] =
-               body["items"]
+      assert [
+               %{
+                 "title" => "Magnet MANIA! | Danny Go!",
+                 "final" => "Magnet MANIA!",
+                 "changed" => true,
+                 "steps" => steps
+               }
+             ] =
+               body["samples"]
+
+      assert [%{"name" => _, "status" => "changed"}] = steps
+    end
+
+    test "accepts ad-hoc test titles alongside indexed media", %{conn: conn} do
+      source = source_fixture()
+
+      chain =
+        Phoenix.json_library().encode!(%{
+          "steps" => [%{"enabled" => true, "preset_key" => "strip_hashtags", "condition" => %{}}]
+        })
+
+      titles = Phoenix.json_library().encode!([%{"title" => "Hello #world", "duration" => 30}])
+
+      conn = get(conn, ~p"/sources/#{source.id}/title_clean_preview?#{[chain: chain, titles: titles]}")
+      body = json_response(conn, 200)
+
+      assert [%{"title" => "Hello #world", "final" => "Hello", "changed" => true}] = body["samples"]
     end
   end
 

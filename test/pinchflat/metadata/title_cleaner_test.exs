@@ -3,86 +3,6 @@ defmodule Pinchflat.Metadata.TitleCleanerTest do
 
   alias Pinchflat.Metadata.TitleCleaner
 
-  defp cfg(attrs \\ []), do: struct(TitleCleaner, attrs)
-
-  describe "clean_title/2" do
-    test "returns blank input unchanged" do
-      assert TitleCleaner.clean_title("", cfg()) == ""
-      assert TitleCleaner.clean_title(nil, cfg()) == nil
-    end
-
-    test "picks the real episode title out of a noisy pipe-separated title" do
-      raw = "SuperKitties Full Episode | Cat's Pajamas / Country Kitty | @disneyjr"
-      assert TitleCleaner.clean_title(raw, cfg(show_name: "SuperKitties")) == "Cat's Pajamas / Country Kitty"
-    end
-
-    test "strips '{alias} Full Episode' but keeps a bare alias inside a real title" do
-      assert TitleCleaner.clean_title("PJ Masks Full Episode | Pajama Party", cfg(show_name: "PJ Masks")) ==
-               "Pajama Party"
-
-      # the show name legitimately appears in the episode title - keep it
-      # (trailing punctuation is stripped, matching the sidecar)
-      assert TitleCleaner.clean_title("PJ Masks in SPACE!", cfg(show_name: "PJ Masks")) == "PJ Masks in SPACE"
-    end
-
-    test "strips brand tags and channel handles" do
-      assert TitleCleaner.clean_title("Disney Jr. | The Big Race", cfg()) == "The Big Race"
-      assert TitleCleaner.clean_title("The Big Race | @disneyjunior", cfg()) == "The Big Race"
-      assert TitleCleaner.clean_title("PBS Kids | Counting Sheep", cfg()) == "Counting Sheep"
-    end
-
-    test "strips emojis and hashtags" do
-      assert TitleCleaner.clean_title("Bubble Pop! 🫧🎉 #shorts #kids", cfg()) == "Bubble Pop"
-    end
-
-    test "strips season/episode markers" do
-      conf = cfg(show_name: "Adventure Time")
-      assert TitleCleaner.clean_title("Adventure Time S1 E4 | The Lost Map", conf) == "The Lost Map"
-    end
-
-    test "applies per-source extra_strip patterns" do
-      conf = cfg(show_name: "Hero Squad", extra_strip: [~S/Superhero\s+Cartoons\s+for\s+Kids/])
-      assert TitleCleaner.clean_title("The Rescue | Superhero Cartoons for Kids", conf) == "The Rescue"
-    end
-
-    test "ignores an invalid extra_strip pattern rather than crashing" do
-      conf = cfg(extra_strip: ["(unclosed"])
-      assert TitleCleaner.clean_title("Just A Title", conf) == "Just A Title"
-    end
-
-    test "falls back to an emoji/hashtag-cleaned original when everything is stripped" do
-      # alias + Full Episode is the only content; nothing meaningful remains
-      assert TitleCleaner.clean_title("Bluey Full Episode", cfg(show_name: "Bluey")) != ""
-    end
-
-    test "normalizes fullwidth pipes" do
-      assert TitleCleaner.clean_title("Disney Jr.｜The Big Race", cfg()) == "The Big Race"
-    end
-
-    test "leading punctuation strip on a multibyte char keeps valid utf-8" do
-      # In byte mode the trailing/leading-punctuation class matched the individual
-      # UTF-8 bytes of its literal en/em dashes, so a leading "…" (E2 80 A6) lost
-      # its first two bytes and left a dangling byte - invalid UTF-8 that then
-      # crashed JSON encoding in the live preview. The `u` flag makes the class
-      # codepoint-aware.
-      result = TitleCleaner.clean_title("… and then the dog ran", cfg())
-
-      assert String.valid?(result)
-      assert {:ok, _} = Jason.encode(result)
-    end
-
-    test "strips a hashtag containing multibyte characters as one unit" do
-      # Without `u`, byte-mode `\w` stops at the `é`, leaving a stray "émonjokes"
-      # fragment. Unicode-aware `\w` treats the whole hashtag as one word.
-      result = TitleCleaner.clean_title("Funny Pokémon clip #pokémonjokes #pokejokes", cfg())
-
-      assert String.valid?(result)
-      assert {:ok, _} = Jason.encode(result)
-      refute result =~ "#"
-      assert result == "Funny Pokémon clip"
-    end
-  end
-
   describe "clean_plot/2" do
     test "returns empty for nil" do
       assert TitleCleaner.clean_plot(nil) == ""
@@ -108,6 +28,25 @@ defmodule Pinchflat.Metadata.TitleCleanerTest do
     test "replaces filesystem-unsafe characters" do
       assert TitleCleaner.sanitize_filename("Cat's Pajamas / Country Kitty") == "Cat's Pajamas - Country Kitty"
       assert TitleCleaner.sanitize_filename("a:b*c?d") == "a-b-c-d"
+    end
+  end
+
+  describe "strip_emojis/1" do
+    test "removes emoji and pictographs but keeps text" do
+      assert TitleCleaner.strip_emojis("Bubble Pop! 🫧🎉") == "Bubble Pop! "
+    end
+
+    test "keeps multibyte non-emoji characters intact" do
+      result = TitleCleaner.strip_emojis("Pokémon clip")
+      assert result == "Pokémon clip"
+      assert String.valid?(result)
+    end
+  end
+
+  describe "normalize/1" do
+    test "converts fullwidth pipe/colon and curly quotes to ascii" do
+      assert TitleCleaner.normalize("Disney Jr.｜The Big Race") == "Disney Jr.|The Big Race"
+      assert TitleCleaner.normalize("“quoted”") == "\"quoted\""
     end
   end
 end

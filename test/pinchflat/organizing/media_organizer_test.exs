@@ -25,8 +25,13 @@ defmodule Pinchflat.Organizing.MediaOrganizerTest do
     path
   end
 
+  # An "opted-in" source: a chain with at least one enabled step makes organizing_enabled? true.
+  # The rule itself is irrelevant here - these tests set each item's `title` explicitly, since
+  # cleaning happens at insert time, not in the organizer.
+  @active_chain %{"steps" => [%{"enabled" => true, "preset_key" => "normalize_whitespace", "condition" => %{}}]}
+
   defp clean_source(attrs \\ %{}) do
-    source_fixture(Map.merge(%{title_clean_enabled: true, custom_name: "Danny Go"}, attrs))
+    source_fixture(Map.merge(%{title_clean_chain: @active_chain, custom_name: "Danny Go"}, attrs))
   end
 
   defp item(source, media_filepath, attrs) do
@@ -130,7 +135,7 @@ defmodule Pinchflat.Organizing.MediaOrganizerTest do
 
   describe "organize_source/2" do
     test "does nothing for a source that hasn't opted in" do
-      source = source_fixture(%{title_clean_enabled: false})
+      source = source_fixture(%{title_clean_chain: %{"steps" => []}})
       dir = show_dir()
       current = Path.join(dir, "s2023e092599 - raw.mp4")
       item(source, current, %{title: "raw", original_title: "raw"})

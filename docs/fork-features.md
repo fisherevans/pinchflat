@@ -123,7 +123,13 @@ Brings the `arr-matey` sidecars in-app so no external process writes the live SQ
 
 ### Title cleaning
 
-Per-source rules strip YouTube clickbait (emoji, hashtags, channel handles, brand tags, "Full Episode" markers, season/episode markers, per-channel taglines) from titles. `Pinchflat.Metadata.TitleCleaner` is a pure port of the `cleaner.py` sidecar. The raw title/description are preserved (`media_items.original_title`/`original_description`) so rules can change and be re-applied; `title` holds the cleaned value the NFO/filename/search already consume. Rules (`title_clean_enabled` + `aliases` + `extra_strip`, validated) live in a **Titles** tab on the source form with a live preview (`GET /sources/:id/title_clean_preview`) of original → cleaned pairs.
+Each source has an ordered **chain** of title-cleaning rules, run over the raw title before it's used in filenames/NFO/metadata. Each step is a self-contained sed-style find/replace (or a built-in preset: strip emojis, normalize whitespace, strip hashtags & @handles) with an optional **condition** gating whether it applies - case-insensitive substring/regex match on the running title, or a duration comparison (`<`, `>`, between). Steps run in order; step N operates on the output of steps 1..N-1.
+
+`Pinchflat.Metadata.TitleCleanEngine` is the pure runner: `run/2` returns the cleaned `:output` plus a per-step `:trace` (status + inline char-level diff via `String.myers_difference/2`) used by the editor's tester. The chain is stored as a single `:map` column `sources.title_clean_chain` (shape `%{"steps" => [...]}`, validated at save time); there's no separate library table - every step is inline. A source is "cleaning enabled" iff it has ≥1 enabled step. The raw title/description are preserved (`media_items.original_title`/`original_description`) so rules can change and be re-applied; `title` holds the cleaned value the NFO/filename/search consume.
+
+The **Titles** tab on the source form is a two-pane editor (Alpine): the chain on the left (add presets/custom rules, reorder, toggle, edit inline), and a live tester on the right that runs the source's recent indexed titles (plus ad-hoc test titles) through the chain step by step - per-step match/skip + before→after diff and an aggregate "X of N change". The tester is server-driven via `GET /sources/:id/title_clean_preview` (returns the full per-step trace), so the engine is the single source of truth for both the hot path and the preview.
+
+This replaced the v1 fixed pipeline (`title_clean_enabled` + `aliases` + `extra_strip`, a hardcoded port of `cleaner.py`), which is gone.
 
 ### Media organizer (clean titles on disk + season strategy)
 

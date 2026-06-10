@@ -13,6 +13,7 @@ defmodule Pinchflat.Sources.Source do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Metadata.SourceMetadata
+  alias Pinchflat.Metadata.TitleCleanEngine
 
   @allowed_fields ~w(
     enabled
@@ -42,9 +43,7 @@ defmodule Pinchflat.Sources.Source do
     title_filter_regex
     title_exclude_regex
     filter_config
-    title_clean_enabled
-    title_clean_aliases
-    title_clean_extra_strip
+    title_clean_chain
     media_profile_id
     output_path_template_override
     marked_for_deletion_at
@@ -109,12 +108,11 @@ defmodule Pinchflat.Sources.Source do
     field :title_filter_regex, :string
     field :title_exclude_regex, :string
     field :filter_config, :map, default: %{}
-    # Per-source title cleaning (strips clickbait from titles before they're used in
-    # filenames/NFO/metadata). `aliases` are show-name variants; `extra_strip` are
-    # per-channel regex taglines. See Pinchflat.Metadata.TitleCleaner.
-    field :title_clean_enabled, :boolean, default: false
-    field :title_clean_aliases, {:array, :string}, default: []
-    field :title_clean_extra_strip, {:array, :string}, default: []
+    # Per-source title cleaning: an ordered chain of rules run over the raw title before it's
+    # used in filenames/NFO/metadata. Shape is %{"steps" => [step, ...]} where each step is a
+    # self-contained find/replace (or preset) + optional condition. A source is "cleaning
+    # enabled" iff it has >= 1 enabled step. See Pinchflat.Metadata.TitleCleanEngine.
+    field :title_clean_chain, :map, default: %{"steps" => []}
     field :output_path_template_override, :string
 
     field :min_duration_seconds, :integer
@@ -156,7 +154,7 @@ defmodule Pinchflat.Sources.Source do
     |> validate_regex_field(:title_filter_regex)
     |> validate_regex_field(:title_exclude_regex)
     |> validate_filter_config()
-    |> validate_title_clean_extra_strip()
+    |> validate_title_clean_chain()
     |> validate_min_and_max_durations()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     |> validate_number(:keep_count, greater_than_or_equal_to: 0)
@@ -236,27 +234,21 @@ defmodule Pinchflat.Sources.Source do
 
   defp valid_filter_rule?(_rule), do: true
 
-  # Each extra_strip entry is compiled as a regex in TitleCleaner; reject invalid
-  # patterns at save time so cleaning can't silently no-op (or worse) on a bad rule.
-  defp validate_title_clean_extra_strip(changeset) do
-    case get_change(changeset, :title_clean_extra_strip) do
-      patterns when is_list(patterns) ->
-        if Enum.all?(patterns, &valid_regex_pattern?/1) do
+  # Each chain step carries a regex `find` and an optional condition, both compiled by the
+  # engine. Reject malformed steps at save time so cleaning can't silently no-op on a bad rule.
+  defp validate_title_clean_chain(changeset) do
+    case get_change(changeset, :title_clean_chain) do
+      %{"steps" => steps} when is_list(steps) ->
+        if Enum.all?(steps, &TitleCleanEngine.valid_step?/1) do
           changeset
         else
-          add_error(changeset, :title_clean_extra_strip, "contains an invalid regex pattern")
+          add_error(changeset, :title_clean_chain, "contains an invalid rule")
         end
 
       _ ->
         changeset
     end
   end
-
-  defp valid_regex_pattern?(pattern) when is_binary(pattern) and pattern != "" do
-    match?({:ok, _}, Regex.compile(pattern))
-  end
-
-  defp valid_regex_pattern?(_pattern), do: true
 
   defp validate_min_and_max_durations(changeset) do
     min_duration = get_change(changeset, :min_duration_seconds)

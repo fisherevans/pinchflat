@@ -36,7 +36,7 @@ defmodule Pinchflat.Organizing.MediaOrganizeWorkerTest do
     test "runs the organizer when not under pressure" do
       put_guard(OkGuard)
       # Not opted in -> organize is a no-op, so this asserts the run branch is taken.
-      source = source_fixture(%{title_clean_enabled: false})
+      source = source_fixture(%{title_clean_chain: %{"steps" => []}})
 
       assert :ok = MediaOrganizeWorker.perform(%Oban.Job{args: %{"id" => source.id}})
     end

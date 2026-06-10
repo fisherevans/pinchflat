@@ -965,8 +965,15 @@ defmodule Pinchflat.MediaTest do
       assert media_item.description == media_attrs.description
     end
 
-    test "preserves the original title and stores the cleaned title when enabled" do
-      source = source_fixture(%{title_clean_enabled: true, title_clean_aliases: ["SuperKitties"]})
+    test "preserves the original title and stores the cleaned title when the chain is active" do
+      chain = %{
+        "steps" => [
+          %{"enabled" => true, "find" => "SuperKitties Full Episode \\| ", "replace" => "", "condition" => %{}},
+          %{"enabled" => true, "find" => " \\| @disneyjr", "replace" => "", "condition" => %{}}
+        ]
+      }
+
+      source = source_fixture(%{title_clean_chain: chain})
 
       raw = "SuperKitties Full Episode | Cat's Pajamas | @disneyjr"
 
@@ -982,8 +989,8 @@ defmodule Pinchflat.MediaTest do
       assert media_item.title == "Cat's Pajamas"
     end
 
-    test "stores the raw title unchanged when cleaning is disabled" do
-      source = source_fixture(%{title_clean_enabled: false})
+    test "stores the raw title unchanged when the chain is empty" do
+      source = source_fixture(%{title_clean_chain: %{"steps" => []}})
       raw = "SuperKitties Full Episode | Cat's Pajamas | @disneyjr"
 
       media_attrs =

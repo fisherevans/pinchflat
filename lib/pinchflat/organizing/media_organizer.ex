@@ -26,6 +26,7 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Sources.Source
   alias Pinchflat.Metadata.TitleCleaner
+  alias Pinchflat.Metadata.TitleCleanEngine
   alias Pinchflat.Metadata.NfoBuilder
   alias Pinchflat.Metadata.MetadataFileHelpers
   alias Pinchflat.Utils.FilesystemUtils
@@ -74,7 +75,7 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
   @doc "Whether the organizer would touch this source at all."
   def organizing_enabled?(%Source{} = source) do
     source = Repo.preload(source, :media_profile)
-    source.title_clean_enabled || season_strategy(source) != :none
+    TitleCleanEngine.active?(source.title_clean_chain) || season_strategy(source) != :none
   end
 
   # --- planning ---

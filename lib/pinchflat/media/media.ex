@@ -16,7 +16,7 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Utils.NumberUtils
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Metadata.MediaMetadata
-  alias Pinchflat.Metadata.TitleCleaner
+  alias Pinchflat.Metadata.TitleCleanEngine
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
 
@@ -515,20 +515,22 @@ defmodule Pinchflat.Media do
     end
   end
 
-  # Preserves the raw title/description, and (when the source enables it) overwrites
-  # `title` with the cleaned value so everything downstream uses the clean title.
+  # Preserves the raw title/description, and (when the source's chain has active rules)
+  # overwrites `title` with the cleaned value so everything downstream uses the clean title.
   # Description/plot cleaning happens at the NFO-write step, not here, so the stored
   # description stays full-text for search/feeds/filtering.
   defp apply_title_cleaning(attrs, source) do
     original_title = Map.get(attrs, :title)
+    chain = source.title_clean_chain
 
     attrs =
       attrs
       |> Map.put(:original_title, original_title)
       |> Map.put(:original_description, Map.get(attrs, :description))
 
-    if source.title_clean_enabled && is_binary(original_title) do
-      Map.put(attrs, :title, TitleCleaner.clean_title(original_title, TitleCleaner.config_for(source)))
+    if is_binary(original_title) && TitleCleanEngine.active?(chain) do
+      media = %{title: original_title, duration_seconds: Map.get(attrs, :duration_seconds)}
+      Map.put(attrs, :title, TitleCleanEngine.clean(chain, media))
     else
       attrs
     end

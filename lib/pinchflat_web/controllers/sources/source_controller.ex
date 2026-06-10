@@ -12,7 +12,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
-  alias Pinchflat.Metadata.TitleCleaner
+  alias Pinchflat.Metadata.TitleCleanEngine
   alias Pinchflat.Media.RecomputeDownloadStatusWorker
   alias Pinchflat.Organizing.MediaOrganizeWorker
   alias Pinchflat.Downloading.RetentionPolicy
@@ -152,42 +152,70 @@ defmodule PinchflatWeb.Sources.SourceController do
     _ -> json(conn, %{error: true})
   end
 
-  # Returns original -> cleaned title pairs for this source's indexed media under the
-  # given (unsaved) title-cleaning rules, so the edit form can preview the effect live.
+  # Runs the (unsaved) title-cleaning chain against this source's recent indexed titles
+  # (plus any ad-hoc test titles), returning a per-step trace per sample so the editor can
+  # show, for each rule, whether it matched and the inline before/after diff.
+  @preview_sample_limit 25
   def title_clean_preview(conn, %{"source_id" => id} = params) do
     source = Sources.get_source!(id)
+    chain = parse_title_clean_chain(params["chain"])
 
-    config = %TitleCleaner{
-      show_name: source.custom_name || "",
-      aliases: clean_list(params["aliases"]),
-      extra_strip: clean_list(params["extra_strip"])
-    }
-
-    items =
+    indexed =
       from(m in MediaItem,
         where: m.source_id == ^source.id and not is_nil(m.uploaded_at),
         order_by: [desc: m.uploaded_at],
-        select: %{title: m.title, original_title: m.original_title}
+        select: %{title: m.original_title, fallback: m.title, duration_seconds: m.duration_seconds},
+        limit: @preview_sample_limit
       )
       |> Repo.all()
-      |> Enum.take(250)
-      |> Enum.map(fn row ->
-        original = row.original_title || row.title
-        cleaned = TitleCleaner.clean_title(original, config)
-        %{original: original, cleaned: cleaned, changed: cleaned != original}
+      |> Enum.map(fn row -> %{title: row.title || row.fallback, duration_seconds: row.duration_seconds} end)
+
+    samples = parse_test_titles(params["titles"]) ++ indexed
+
+    results =
+      Enum.map(samples, fn sample ->
+        %{output: output, trace: trace} = TitleCleanEngine.run(chain, sample)
+
+        %{
+          title: sample.title,
+          duration: sample.duration_seconds,
+          final: output,
+          changed: output != (sample.title || ""),
+          steps: Enum.map(trace, &trace_step_json/1)
+        }
       end)
 
-    json(conn, %{total: length(items), changed: Enum.count(items, & &1.changed), items: items})
+    json(conn, %{
+      total: length(results),
+      changed: Enum.count(results, & &1.changed),
+      samples: results
+    })
   rescue
     _ -> json(conn, %{error: true})
   end
 
-  defp clean_list(value) do
-    value
-    |> List.wrap()
-    |> Enum.map(&to_string/1)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+  defp trace_step_json(step) do
+    %{
+      n: step.n,
+      name: step.name,
+      status: Atom.to_string(step.status),
+      condition_kind: step.condition_kind,
+      diff: step.diff
+    }
+  end
+
+  # Ad-hoc test titles the user typed into the tester, sent as a JSON array of
+  # %{"title" => ..., "duration" => ...} (duration optional).
+  defp parse_test_titles(json) do
+    case Phoenix.json_library().decode(to_string(json || "")) do
+      {:ok, list} when is_list(list) ->
+        Enum.map(list, fn item ->
+          %{title: to_string(item["title"] || ""), duration_seconds: parse_optional_integer(item["duration"])}
+        end)
+
+      _ ->
+        []
+    end
   end
 
   # Returns the source's whole prospective library - every indexed item, downloaded or
@@ -449,23 +477,24 @@ defmodule PinchflatWeb.Sources.SourceController do
     params
     |> keep_bytes_from_params()
     |> filter_config_from_params()
-    |> json_list_from_params("title_clean_aliases_json", "title_clean_aliases")
-    |> json_list_from_params("title_clean_extra_strip_json", "title_clean_extra_strip")
+    |> title_clean_chain_from_params()
   end
 
-  # The title-clean alias/extra_strip lists are submitted as a JSON array string (same
-  # tactic as filter_config_json) so an emptied list reliably clears the field.
-  defp json_list_from_params(%{} = params, json_key, field_key) do
-    case Map.fetch(params, json_key) do
-      {:ok, json} -> params |> Map.put(field_key, clean_list(parse_json_list(json))) |> Map.delete(json_key)
-      :error -> params
-    end
+  # The title-clean chain is submitted as a JSON string (same tactic as filter_config_json)
+  # so reordering/clearing steps reliably overwrites the stored map. Missing key = untouched.
+  defp title_clean_chain_from_params(%{"title_clean_chain_json" => json} = params) do
+    params
+    |> Map.put("title_clean_chain", parse_title_clean_chain(json))
+    |> Map.delete("title_clean_chain_json")
   end
 
-  defp parse_json_list(json) do
+  defp title_clean_chain_from_params(params), do: params
+
+  defp parse_title_clean_chain(json) do
     case Phoenix.json_library().decode(to_string(json)) do
-      {:ok, list} when is_list(list) -> list
-      _ -> []
+      {:ok, %{"steps" => steps} = chain} when is_list(steps) -> chain
+      {:ok, steps} when is_list(steps) -> %{"steps" => steps}
+      _ -> %{"steps" => []}
     end
   end
 
