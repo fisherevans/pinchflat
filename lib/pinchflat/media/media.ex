@@ -164,11 +164,16 @@ defmodule Pinchflat.Media do
   defp scoped_media_query(filters) do
     MediaQuery.new()
     |> filter_by_source(Map.get(filters, :source_id))
+    |> filter_by_sources(Map.get(filters, :source_ids))
     |> filter_by_status(Map.get(filters, :status))
   end
 
   defp filter_by_source(query, nil), do: query
   defp filter_by_source(query, source_id), do: where(query, ^MediaQuery.for_source(source_id))
+
+  # Multi-select source filter for the global table. An empty/missing list means "all sources".
+  defp filter_by_sources(query, ids) when is_list(ids) and ids != [], do: where(query, [m], m.source_id in ^ids)
+  defp filter_by_sources(query, _ids), do: query
 
   defp filter_by_status(query, status) when status in [nil, "", "all"], do: query
   defp filter_by_status(query, status), do: where(query, [m], m.download_status == ^status)

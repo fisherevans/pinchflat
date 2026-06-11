@@ -39,6 +39,9 @@ defmodule PinchflatWeb.Media.MediaTableLive do
         page: 1,
         page_size: @default_page_size,
         search: nil,
+        source_ids: [],
+        # Options for the global "Shows" multi-select. Only loaded for the cross-source table.
+        sources: if(scope == "global", do: source_options(), else: []),
         views: TableViews.list_views(scope, source_id)
       )
       |> apply_view(slug)
@@ -53,6 +56,17 @@ defmodule PinchflatWeb.Media.MediaTableLive do
 
   def handle_event("filter_status", %{"status" => status}, socket) do
     {:noreply, socket |> assign(status: status, active_view: nil, page: 1) |> load_records()}
+  end
+
+  def handle_event("toggle_source", %{"id" => id}, socket) do
+    id = String.to_integer(id)
+    current = socket.assigns.source_ids
+    ids = if id in current, do: List.delete(current, id), else: [id | current]
+    {:noreply, socket |> assign(source_ids: ids, active_view: nil, page: 1) |> load_records()}
+  end
+
+  def handle_event("clear_sources", _params, socket) do
+    {:noreply, socket |> assign(source_ids: [], active_view: nil, page: 1) |> load_records()}
   end
 
   def handle_event("page_change", %{"direction" => direction}, socket) do
@@ -128,6 +142,7 @@ defmodule PinchflatWeb.Media.MediaTableLive do
     result =
       Media.list_media_items(%{
         source_id: a.source_id,
+        source_ids: a.source_ids,
         status: a.status,
         search: a.search,
         sort: a.sort,
@@ -177,10 +192,31 @@ defmodule PinchflatWeb.Media.MediaTableLive do
       status: config["status"] || "all",
       columns: resolve_columns(config["columns"], socket.assigns.source_id),
       sort: resolve_sort_config(config["sort"]),
+      source_ids: resolve_source_ids(config["source_ids"]),
       page_size: config["page_size"] || @default_page_size,
       page: 1
     )
   end
+
+  # Sources for the global "Shows" multi-select, alphabetized by display name.
+  defp source_options do
+    Sources.list_sources()
+    |> Enum.sort_by(&String.downcase(&1.custom_name || ""))
+  end
+
+  defp resolve_source_ids(ids) when is_list(ids), do: Enum.flat_map(ids, &normalize_source_option_id/1)
+  defp resolve_source_ids(_), do: []
+
+  defp normalize_source_option_id(id) when is_integer(id), do: [id]
+
+  defp normalize_source_option_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {n, ""} -> [n]
+      _ -> []
+    end
+  end
+
+  defp normalize_source_option_id(_), do: []
 
   defp resolve_columns(columns, source_id) do
     columns = MediaTableColumns.sanitize(columns || [])
@@ -199,6 +235,7 @@ defmodule PinchflatWeb.Media.MediaTableLive do
       "status" => assigns.status,
       "columns" => assigns.columns,
       "sort" => %{"key" => to_string(assigns.sort.key), "direction" => to_string(assigns.sort.direction)},
+      "source_ids" => assigns.source_ids,
       "page_size" => assigns.page_size
     }
   end
@@ -283,6 +320,42 @@ defmodule PinchflatWeb.Media.MediaTableLive do
         </span>
 
         <div class="flex flex-wrap items-center gap-2">
+          <div :if={@scope == "global"} class="relative" x-data="{ open: false }">
+            <button
+              type="button"
+              x-on:click="open = !open"
+              class="flex items-center gap-1 rounded border border-stroke px-3 py-2 dark:border-strokedark dark:bg-meta-4"
+            >
+              <.icon name="hero-tv" class="h-5 w-5" /> Shows
+              <span :if={@source_ids != []} class="ml-1 rounded-full bg-primary px-1.5 text-xs text-white">
+                {length(@source_ids)}
+              </span>
+            </button>
+            <div
+              x-show="open"
+              x-cloak
+              x-on:click.outside="open = false"
+              class="absolute left-0 z-10 mt-1 w-72 rounded border border-stroke bg-boxdark p-3 shadow-lg dark:border-strokedark"
+            >
+              <div class="mb-2 flex items-center justify-between text-xs text-bodydark2">
+                <span>{if @source_ids == [], do: "All shows", else: "#{length(@source_ids)} selected"}</span>
+                <button :if={@source_ids != []} type="button" phx-click="clear_sources" class="text-primary hover:underline">
+                  Clear
+                </button>
+              </div>
+              <div class="max-h-72 overflow-y-auto">
+                <label
+                  :for={src <- @sources}
+                  class="flex cursor-pointer items-center gap-2 py-1 text-sm"
+                  title={src.custom_name}
+                >
+                  <input type="checkbox" checked={src.id in @source_ids} phx-click="toggle_source" phx-value-id={src.id} />
+                  <span class="truncate">{src.custom_name}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <form phx-change="filter_status">
             <select
               name="status"

@@ -40,6 +40,23 @@ defmodule Pinchflat.Media.MediaTableTest do
       ids = MapSet.new(result.records, & &1.id)
       assert MapSet.subset?(MapSet.new([a.id, b.id]), ids)
     end
+
+    test "source_ids limits the global table to the selected shows" do
+      s1 = source_fixture()
+      s2 = source_fixture()
+      s3 = source_fixture()
+
+      a = pending_item(s1)
+      b = pending_item(s2)
+      _c = pending_item(s3)
+
+      result = Media.list_media_items(%{status: "pending", source_ids: [s1.id, s2.id]})
+      assert MapSet.new(result.records, & &1.id) == MapSet.new([a.id, b.id])
+
+      # An empty list is treated as "all shows", not "none".
+      all = Media.list_media_items(%{status: "pending", source_ids: []})
+      assert MapSet.subset?(MapSet.new([a.id, b.id]), MapSet.new(all.records, & &1.id))
+    end
   end
 
   describe "list_media_items/1 search" do
