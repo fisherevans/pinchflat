@@ -581,7 +581,7 @@
                   const res = await fetch(this.url + '?' + q.toString());
                   const d = await res.json();
                   if (d.error) { this.error = true; this.loaded = true; return; }
-                  this.error = false; this.preview = d; this.expanded = {}; this.loaded = true;
+                  this.error = false; this.preview = d; this.loaded = true;
                 } catch (e) { this.error = true; this.loaded = true; }
               }
             }
@@ -916,17 +916,17 @@
                   <div
                     x-show="matchesFilter(s)"
                     class="shrink-0 overflow-hidden rounded-md border transition-colors"
-                    x-bind:class="expanded[si] ? 'border-primary/60 bg-meta-4/10' : 'border-stroke hover:border-bodydark2/40 dark:border-strokedark'"
+                    x-bind:class="expanded[s.title] ? 'border-primary/60 bg-meta-4/10' : 'border-stroke hover:border-bodydark2/40 dark:border-strokedark'"
                   >
                     <%!-- collapsed summary: original (cuts struck) over the final result; expand for the per-rule breakdown --%>
                     <button
                       type="button"
-                      x-on:click="toggleExpand(si)"
+                      x-on:click="toggleExpand(s.title)"
                       class="flex w-full items-start gap-2 px-2.5 py-2 text-left hover:bg-meta-4/10"
                     >
                       <span
                         class="mt-0.5 shrink-0 text-[10px] leading-none text-bodydark2 transition-transform"
-                        x-bind:class="expanded[si] ? 'rotate-90' : ''"
+                        x-bind:class="expanded[s.title] ? 'rotate-90' : ''"
                       >
                         &#9656;
                       </span>
@@ -968,7 +968,7 @@
 
                     <%!-- per-rule breakdown, expandable per title; inset darker panel so it nests under the header --%>
                     <div
-                      x-show="expanded[si]"
+                      x-show="expanded[s.title]"
                       x-cloak
                       class="divide-y divide-stroke/60 border-t border-strokedark bg-black/20 dark:divide-strokedark/60"
                     >
