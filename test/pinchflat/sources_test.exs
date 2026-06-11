@@ -87,6 +87,33 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "effective_title_clean_chain/1" do
+    setup do
+      global = %{
+        "steps" => [%{"enabled" => true, "name" => "global", "find" => "G", "replace" => "", "condition" => %{}}]
+      }
+
+      {:ok, _} = Pinchflat.Settings.update_setting(Pinchflat.Settings.record(), %{title_clean_global_chain: global})
+      :ok
+    end
+
+    @source_chain %{
+      "steps" => [%{"enabled" => true, "name" => "source", "find" => "S", "replace" => "", "condition" => %{}}]
+    }
+
+    test "runs the global chain before the source chain when opted in" do
+      source = source_fixture(%{title_clean_use_global: true, title_clean_chain: @source_chain})
+      %{"steps" => steps} = Sources.effective_title_clean_chain(source)
+      assert Enum.map(steps, & &1["name"]) == ["global", "source"]
+    end
+
+    test "skips the global chain when the source opts out" do
+      source = source_fixture(%{title_clean_use_global: false, title_clean_chain: @source_chain})
+      %{"steps" => steps} = Sources.effective_title_clean_chain(source)
+      assert Enum.map(steps, & &1["name"]) == ["source"]
+    end
+  end
+
   describe "use_cookies?/2" do
     test "returns true if the source has been set to use cookies" do
       source = source_fixture(%{cookie_behaviour: :all_operations})

@@ -101,6 +101,7 @@ defmodule PinchflatWeb do
       import PinchflatWeb.CustomComponents.TableComponents
       import PinchflatWeb.CustomComponents.ButtonComponents
       import PinchflatWeb.CustomComponents.DashboardComponents
+      import PinchflatWeb.CustomComponents.TitleCleanComponents
       import Pinchflat.Utils.StringUtils, only: [double_brace: 1]
 
       alias Pinchflat.Settings

@@ -116,6 +116,29 @@
     </section>
   </section>
 
+  <section class="mt-8">
+    <section>
+      <h3 class="text-2xl text-black dark:text-white">
+        Title Cleaning
+      </h3>
+      <p class="mt-2 max-w-prose text-sm text-bodydark">
+        A global chain of rules applied to every source's titles before that source's own rules
+        (unless a source opts out on its Titles tab). Good for blanket cleanups like stripping
+        emojis or collapsing whitespace - keep source-specific rules on each source.
+      </p>
+    </section>
+
+    <div class="mt-5">
+      <.title_clean_chain_editor
+        url={~p"/settings/title_clean_preview"}
+        submit_name="setting[title_clean_global_chain_json]"
+        seed_steps={f[:title_clean_global_chain].value || %{"steps" => []}}
+        empty_text="No indexed media yet to preview against."
+        show_global={false}
+      />
+    </div>
+  </section>
+
   <section class="mt-8" x-show="advancedMode">
     <section>
       <h3 class="text-2xl text-black dark:text-white">

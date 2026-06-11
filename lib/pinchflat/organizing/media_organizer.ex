@@ -75,6 +75,7 @@ defmodule Pinchflat.Organizing.MediaOrganizer do
   @doc "Whether the organizer would touch this source at all."
   def organizing_enabled?(%Source{} = source) do
     source = Repo.preload(source, :media_profile)
+
     TitleCleanEngine.active?(Pinchflat.Sources.effective_title_clean_chain(source)) ||
       season_strategy(source) != :none
   end

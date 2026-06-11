@@ -12,7 +12,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
-  alias Pinchflat.Metadata.TitleCleanEngine
+  alias Pinchflat.Metadata.TitleCleanPreview
   alias Pinchflat.Media.RecomputeDownloadStatusWorker
   alias Pinchflat.Organizing.MediaOrganizeWorker
   alias Pinchflat.Downloading.RetentionPolicy
@@ -155,12 +155,12 @@ defmodule PinchflatWeb.Sources.SourceController do
   # Runs the (unsaved) title-cleaning chain against this source's recent indexed titles
   # (plus any ad-hoc test titles), returning a per-step trace per sample so the editor can
   # show, for each rule, whether it matched and the inline before/after diff.
-  @preview_sample_limit 25
-  @preview_sample_max 200
   def title_clean_preview(conn, %{"source_id" => id} = params) do
     source = Sources.get_source!(id)
-    chain = parse_title_clean_chain(params["chain"])
-    limit = preview_limit(params["limit"])
+    source_steps = TitleCleanPreview.parse_steps(params["chain"])
+    # The editor's toggle: when off, skip the global chain for this preview.
+    global_steps = if params["use_global"] != "0", do: Sources.global_title_clean_steps(), else: []
+    limit = TitleCleanPreview.clamp_limit(params["limit"])
 
     indexed_query = from(m in MediaItem, where: m.source_id == ^source.id and not is_nil(m.uploaded_at))
     indexed_total = Repo.aggregate(indexed_query, :count)
@@ -173,67 +173,19 @@ defmodule PinchflatWeb.Sources.SourceController do
       |> Repo.all()
       |> Enum.map(fn row -> %{title: row.title || row.fallback, duration_seconds: row.duration_seconds} end)
 
-    samples = parse_test_titles(params["titles"]) ++ indexed
-
-    results =
-      Enum.map(samples, fn sample ->
-        original = sample.title || ""
-        %{output: output, trace: trace} = TitleCleanEngine.run(chain, sample)
-
-        %{
-          title: original,
-          duration: sample.duration_seconds,
-          final: output,
-          changed: output != original,
-          # Net original -> final diff for the compact (collapsed) row.
-          diff: TitleCleanEngine.diff_segments(original, output),
-          # Per-rule breakdown for the expandable detail.
-          steps: Enum.map(trace, &trace_step_json/1)
-        }
-      end)
+    samples = TitleCleanPreview.parse_test_titles(params["titles"]) ++ indexed
+    results = TitleCleanPreview.run(global_steps, source_steps, samples)
 
     json(conn, %{
       total: length(results),
       changed: Enum.count(results, & &1.changed),
       indexed_shown: length(indexed),
       indexed_total: indexed_total,
-      indexed_cap: @preview_sample_max,
+      indexed_cap: TitleCleanPreview.max_limit(),
       samples: results
     })
   rescue
     _ -> json(conn, %{error: true})
-  end
-
-  # The tester's "load more" bumps this; clamp so a hand-crafted param can't pull the whole library.
-  defp preview_limit(raw) do
-    case parse_optional_integer(raw) do
-      n when is_integer(n) and n > 0 -> min(n, @preview_sample_max)
-      _ -> @preview_sample_limit
-    end
-  end
-
-  defp trace_step_json(step) do
-    %{
-      n: step.n,
-      name: step.name,
-      status: Atom.to_string(step.status),
-      condition_kind: step.condition_kind,
-      diff: step.diff
-    }
-  end
-
-  # Ad-hoc test titles the user typed into the tester, sent as a JSON array of
-  # %{"title" => ..., "duration" => ...} (duration optional).
-  defp parse_test_titles(json) do
-    case Phoenix.json_library().decode(to_string(json || "")) do
-      {:ok, list} when is_list(list) ->
-        Enum.map(list, fn item ->
-          %{title: to_string(item["title"] || ""), duration_seconds: parse_optional_integer(item["duration"])}
-        end)
-
-      _ ->
-        []
-    end
   end
 
   # Returns the source's whole prospective library - every indexed item, downloaded or
