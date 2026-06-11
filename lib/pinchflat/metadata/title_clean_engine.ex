@@ -79,10 +79,12 @@ defmodule Pinchflat.Metadata.TitleCleanEngine do
   @doc "Whether a single step is well-formed: a preset, or a compilable regex, with a valid condition."
   def valid_step?(step) when is_map(step) do
     find_ok = not is_nil(presence(step["preset_key"])) or valid_regex?(step["find"])
-    find_ok and valid_condition?(step["condition"] || %{})
+    find_ok and binary_or_nil?(step["replace"]) and valid_condition?(step["condition"] || %{})
   end
 
   def valid_step?(_), do: false
+
+  defp binary_or_nil?(value), do: is_nil(value) or is_binary(value)
 
   @doc "Whether a condition map is well-formed. Empty/`none` is always valid."
   def valid_condition?(condition) when is_map(condition) do
@@ -144,13 +146,18 @@ defmodule Pinchflat.Metadata.TitleCleanEngine do
 
     if is_binary(find) and find != "" do
       case compile(find, step["case_sensitive"] == true) do
-        {:ok, regex} -> Regex.replace(regex, text, to_string(step["replace"] || ""))
+        {:ok, regex} -> Regex.replace(regex, text, replacement(step["replace"]))
         :error -> text
       end
     else
       text
     end
   end
+
+  # A non-binary replacement (a malformed step that slipped past validation) would crash
+  # Regex.replace; treat it as "delete" rather than raising on the indexing hot path.
+  defp replacement(value) when is_binary(value), do: value
+  defp replacement(_), do: ""
 
   defp apply_preset("strip_emojis", text), do: TitleCleaner.strip_emojis(text)
 

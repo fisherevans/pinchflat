@@ -11,16 +11,31 @@ defmodule Pinchflat.Metadata.TitleCleanPreview do
 
   @default_limit 25
   @max_limit 200
+  # Cap ad-hoc test titles and bound how long a single preview run may burn the scheduler -
+  # the chain is user-supplied regex run synchronously over every sample.
+  @max_test_titles 50
+  @run_timeout_ms 3_000
 
   @doc "Upper bound on how many indexed titles the tester will pull."
   def max_limit, do: @max_limit
 
-  @doc "Parses a chain JSON string (`{\"steps\":[...]}` or a bare array) into a step list."
-  def parse_steps(json) do
+  @doc """
+  Strictly decodes a chain JSON string into `{:ok, steps}` or `:error`. Used on the SAVE path
+  so a malformed payload leaves the stored chain untouched rather than wiping it to empty.
+  """
+  def decode_steps(json) do
     case Phoenix.json_library().decode(to_string(json || "")) do
-      {:ok, %{"steps" => steps}} when is_list(steps) -> steps
-      {:ok, steps} when is_list(steps) -> steps
-      _ -> []
+      {:ok, %{"steps" => steps}} when is_list(steps) -> {:ok, steps}
+      {:ok, steps} when is_list(steps) -> {:ok, steps}
+      _ -> :error
+    end
+  end
+
+  @doc "Leniently parses a chain JSON string into a step list (empty on failure). For previews."
+  def parse_steps(json) do
+    case decode_steps(json) do
+      {:ok, steps} -> steps
+      :error -> []
     end
   end
 
@@ -28,7 +43,9 @@ defmodule Pinchflat.Metadata.TitleCleanPreview do
   def parse_test_titles(json) do
     case Phoenix.json_library().decode(to_string(json || "")) do
       {:ok, list} when is_list(list) ->
-        Enum.map(list, fn item ->
+        list
+        |> Enum.take(@max_test_titles)
+        |> Enum.map(fn item ->
           %{title: to_string(item["title"] || ""), duration_seconds: parse_int(item["duration"])}
         end)
 
@@ -66,6 +83,27 @@ defmodule Pinchflat.Metadata.TitleCleanPreview do
         steps: trace |> Enum.with_index() |> Enum.map(fn {step, idx} -> trace_entry(step, idx < global_count) end)
       }
     end)
+  end
+
+  @doc """
+  Like `run/3` but bounded: the chain is user-supplied regex run synchronously over every
+  sample, so a catastrophic pattern × many samples could pin a scheduler. Runs in a task with a
+  wall-clock timeout (and rescues any unexpected error), returning `{:ok, results}` or `:error`.
+  """
+  def safe_run(global_steps, source_steps, samples) do
+    task =
+      Task.async(fn ->
+        try do
+          {:ok, run(global_steps, source_steps, samples)}
+        rescue
+          _ -> :error
+        end
+      end)
+
+    case Task.yield(task, @run_timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, results}} -> {:ok, results}
+      _ -> :error
+    end
   end
 
   defp trace_entry(step, is_global) do

@@ -59,10 +59,15 @@ defmodule PinchflatWeb.Media.MediaTableLive do
   end
 
   def handle_event("toggle_source", %{"id" => id}, socket) do
-    id = String.to_integer(id)
-    current = socket.assigns.source_ids
-    ids = if id in current, do: List.delete(current, id), else: [id | current]
-    {:noreply, socket |> assign(source_ids: ids, active_view: nil, page: 1) |> load_records()}
+    case normalize_source_option_id(id) do
+      [id] ->
+        current = socket.assigns.source_ids
+        ids = if id in current, do: List.delete(current, id), else: [id | current]
+        {:noreply, socket |> assign(source_ids: ids, active_view: nil, page: 1) |> load_records()}
+
+      [] ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("clear_sources", _params, socket) do
@@ -242,7 +247,13 @@ defmodule PinchflatWeb.Media.MediaTableLive do
 
   defp normalize_source_id(nil), do: nil
   defp normalize_source_id(id) when is_integer(id), do: id
-  defp normalize_source_id(id) when is_binary(id), do: String.to_integer(id)
+
+  defp normalize_source_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {n, _} -> n
+      :error -> nil
+    end
+  end
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value

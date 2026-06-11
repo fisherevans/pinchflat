@@ -156,6 +156,11 @@ defmodule Pinchflat.Metadata.TitleCleanEngineTest do
       step = rule(%{"find" => "(unclosed", "replace" => ""})
       assert %{output: "Just A Title"} = run([step], "Just A Title")
     end
+
+    test "a non-binary replace is treated as delete rather than crashing the hot path" do
+      step = rule(%{"find" => "x", "replace" => %{"bad" => true}})
+      assert %{output: "y"} = run([step], "xy")
+    end
   end
 
   describe "active?/1" do
@@ -174,6 +179,11 @@ defmodule Pinchflat.Metadata.TitleCleanEngineTest do
     test "a find/replace step requires a compilable regex" do
       assert Engine.valid_step?(rule(%{"find" => "ok\\d+"}))
       refute Engine.valid_step?(rule(%{"find" => "(unclosed"}))
+    end
+
+    test "rejects a non-binary replace" do
+      refute Engine.valid_step?(rule(%{"find" => "x", "replace" => %{"a" => 1}}))
+      refute Engine.valid_step?(rule(%{"find" => "x", "replace" => ["a"]}))
     end
 
     test "condition shape is validated" do

@@ -32,9 +32,14 @@ defmodule PinchflatWeb.Settings.SettingController do
   # The global title-clean chain is submitted as a JSON string (same tactic as the source chain)
   # so reordering/clearing reliably overwrites the stored map.
   defp normalize_setting_params(%{"title_clean_global_chain_json" => json} = params) do
-    params
-    |> Map.put("title_clean_global_chain", %{"steps" => TitleCleanPreview.parse_steps(json)})
-    |> Map.delete("title_clean_global_chain_json")
+    params = Map.delete(params, "title_clean_global_chain_json")
+
+    # A present-but-unparseable payload leaves the saved global chain untouched rather than
+    # wiping rules that affect every source.
+    case TitleCleanPreview.decode_steps(json) do
+      {:ok, steps} -> Map.put(params, "title_clean_global_chain", %{"steps" => steps})
+      :error -> params
+    end
   end
 
   defp normalize_setting_params(params), do: params
@@ -57,17 +62,22 @@ defmodule PinchflatWeb.Settings.SettingController do
       |> Enum.map(fn row -> %{title: row.title || row.fallback, duration_seconds: row.duration_seconds} end)
 
     samples = TitleCleanPreview.parse_test_titles(params["titles"]) ++ indexed
-    # The global chain being edited runs in the "source" position - there's no further prefix.
-    results = TitleCleanPreview.run([], global_steps, samples)
 
-    json(conn, %{
-      total: length(results),
-      changed: Enum.count(results, & &1.changed),
-      indexed_shown: length(indexed),
-      indexed_total: indexed_total,
-      indexed_cap: TitleCleanPreview.max_limit(),
-      samples: results
-    })
+    # The global chain being edited runs in the "source" position - there's no further prefix.
+    case TitleCleanPreview.safe_run([], global_steps, samples) do
+      {:ok, results} ->
+        json(conn, %{
+          total: length(results),
+          changed: Enum.count(results, & &1.changed),
+          indexed_shown: length(indexed),
+          indexed_total: indexed_total,
+          indexed_cap: TitleCleanPreview.max_limit(),
+          samples: results
+        })
+
+      :error ->
+        json(conn, %{error: true})
+    end
   rescue
     _ -> json(conn, %{error: true})
   end

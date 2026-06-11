@@ -174,16 +174,21 @@ defmodule PinchflatWeb.Sources.SourceController do
       |> Enum.map(fn row -> %{title: row.title || row.fallback, duration_seconds: row.duration_seconds} end)
 
     samples = TitleCleanPreview.parse_test_titles(params["titles"]) ++ indexed
-    results = TitleCleanPreview.run(global_steps, source_steps, samples)
 
-    json(conn, %{
-      total: length(results),
-      changed: Enum.count(results, & &1.changed),
-      indexed_shown: length(indexed),
-      indexed_total: indexed_total,
-      indexed_cap: TitleCleanPreview.max_limit(),
-      samples: results
-    })
+    case TitleCleanPreview.safe_run(global_steps, source_steps, samples) do
+      {:ok, results} ->
+        json(conn, %{
+          total: length(results),
+          changed: Enum.count(results, & &1.changed),
+          indexed_shown: length(indexed),
+          indexed_total: indexed_total,
+          indexed_cap: TitleCleanPreview.max_limit(),
+          samples: results
+        })
+
+      :error ->
+        json(conn, %{error: true})
+    end
   rescue
     _ -> json(conn, %{error: true})
   end
@@ -450,23 +455,19 @@ defmodule PinchflatWeb.Sources.SourceController do
     |> title_clean_chain_from_params()
   end
 
-  # The title-clean chain is submitted as a JSON string (same tactic as filter_config_json)
-  # so reordering/clearing steps reliably overwrites the stored map. Missing key = untouched.
+  # The title-clean chain is submitted as a JSON string (same tactic as filter_config_json) so
+  # reordering/clearing steps reliably overwrites the stored map. Missing key = untouched; a
+  # present-but-unparseable value is also left untouched rather than wiping the saved chain.
   defp title_clean_chain_from_params(%{"title_clean_chain_json" => json} = params) do
-    params
-    |> Map.put("title_clean_chain", parse_title_clean_chain(json))
-    |> Map.delete("title_clean_chain_json")
+    params = Map.delete(params, "title_clean_chain_json")
+
+    case TitleCleanPreview.decode_steps(json) do
+      {:ok, steps} -> Map.put(params, "title_clean_chain", %{"steps" => steps})
+      :error -> params
+    end
   end
 
   defp title_clean_chain_from_params(params), do: params
-
-  defp parse_title_clean_chain(json) do
-    case Phoenix.json_library().decode(to_string(json)) do
-      {:ok, %{"steps" => steps} = chain} when is_list(steps) -> chain
-      {:ok, steps} when is_list(steps) -> %{"steps" => steps}
-      _ -> %{"steps" => []}
-    end
-  end
 
   # The filter rule builder submits its rules as a JSON string in filter_config_json.
   # Parse it into the filter_config map the schema expects.
