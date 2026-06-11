@@ -9,6 +9,7 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Tasks
+  alias Pinchflat.Settings
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.YtDlp.MediaCollection
@@ -31,6 +32,31 @@ defmodule Pinchflat.Sources do
 
     source.output_path_template_override || media_profile.output_path_template
   end
+
+  @doc """
+  The title-cleaning chain actually applied to a source: the global chain (from Settings) runs
+  first when the source opts in (`title_clean_use_global`), then the source's own chain. Always
+  in that order, never intermingled.
+
+  Returns %{"steps" => [...]}
+  """
+  def effective_title_clean_chain(%Source{} = source) do
+    source_steps = chain_steps(source.title_clean_chain)
+    global_steps = if source.title_clean_use_global, do: global_title_clean_steps(), else: []
+
+    %{"steps" => global_steps ++ source_steps}
+  end
+
+  @doc "The global title-clean steps configured in Settings (empty if none/unset)."
+  def global_title_clean_steps do
+    case Settings.record() do
+      %{title_clean_global_chain: chain} -> chain_steps(chain)
+      _ -> []
+    end
+  end
+
+  defp chain_steps(%{"steps" => steps}) when is_list(steps), do: steps
+  defp chain_steps(_), do: []
 
   @doc """
   Returns a boolean indicating whether or not cookies should be used for a given operation.

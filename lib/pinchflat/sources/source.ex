@@ -44,6 +44,7 @@ defmodule Pinchflat.Sources.Source do
     title_exclude_regex
     filter_config
     title_clean_chain
+    title_clean_use_global
     media_profile_id
     output_path_template_override
     marked_for_deletion_at
@@ -113,6 +114,8 @@ defmodule Pinchflat.Sources.Source do
     # self-contained find/replace (or preset) + optional condition. A source is "cleaning
     # enabled" iff it has >= 1 enabled step. See Pinchflat.Metadata.TitleCleanEngine.
     field :title_clean_chain, :map, default: %{"steps" => []}
+    # When true, the global title-clean chain (Settings) runs before this source's chain.
+    field :title_clean_use_global, :boolean, default: true
     field :output_path_template_override, :string
 
     field :min_duration_seconds, :integer

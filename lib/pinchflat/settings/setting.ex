@@ -6,6 +6,8 @@ defmodule Pinchflat.Settings.Setting do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Pinchflat.Metadata.TitleCleanEngine
+
   @allowed_fields [
     :onboarding,
     :pro_enabled,
@@ -22,7 +24,8 @@ defmodule Pinchflat.Settings.Setting do
     :plex_token,
     :plex_library_section,
     :jellyfin_url,
-    :jellyfin_token
+    :jellyfin_token,
+    :title_clean_global_chain
   ]
 
   @required_fields [
@@ -56,6 +59,10 @@ defmodule Pinchflat.Settings.Setting do
     field :plex_library_section, :string
     field :jellyfin_url, :string
     field :jellyfin_token, :string
+
+    # Global title-cleaning chain run before every source's own chain (unless the source opts
+    # out via title_clean_use_global). Shape: %{"steps" => [...]}. See TitleCleanEngine.
+    field :title_clean_global_chain, :map, default: %{"steps" => []}
   end
 
   @doc false
@@ -64,5 +71,20 @@ defmodule Pinchflat.Settings.Setting do
     |> cast(attrs, @allowed_fields)
     |> validate_required(@required_fields)
     |> validate_number(:extractor_sleep_interval_seconds, greater_than_or_equal_to: 0)
+    |> validate_title_clean_global_chain()
+  end
+
+  defp validate_title_clean_global_chain(changeset) do
+    case get_change(changeset, :title_clean_global_chain) do
+      %{"steps" => steps} when is_list(steps) ->
+        if Enum.all?(steps, &TitleCleanEngine.valid_step?/1) do
+          changeset
+        else
+          add_error(changeset, :title_clean_global_chain, "contains an invalid rule")
+        end
+
+      _ ->
+        changeset
+    end
   end
 end

@@ -526,7 +526,7 @@ defmodule Pinchflat.Media do
   # description stays full-text for search/feeds/filtering.
   defp apply_title_cleaning(attrs, source) do
     original_title = Map.get(attrs, :title)
-    chain = source.title_clean_chain
+    chain = Pinchflat.Sources.effective_title_clean_chain(source)
 
     attrs =
       attrs
