@@ -156,17 +156,20 @@ defmodule PinchflatWeb.Sources.SourceController do
   # (plus any ad-hoc test titles), returning a per-step trace per sample so the editor can
   # show, for each rule, whether it matched and the inline before/after diff.
   @preview_sample_limit 25
+  @preview_sample_max 200
   def title_clean_preview(conn, %{"source_id" => id} = params) do
     source = Sources.get_source!(id)
     chain = parse_title_clean_chain(params["chain"])
+    limit = preview_limit(params["limit"])
+
+    indexed_query = from(m in MediaItem, where: m.source_id == ^source.id and not is_nil(m.uploaded_at))
+    indexed_total = Repo.aggregate(indexed_query, :count)
 
     indexed =
-      from(m in MediaItem,
-        where: m.source_id == ^source.id and not is_nil(m.uploaded_at),
-        order_by: [desc: m.uploaded_at],
-        select: %{title: m.original_title, fallback: m.title, duration_seconds: m.duration_seconds},
-        limit: @preview_sample_limit
-      )
+      indexed_query
+      |> order_by([m], desc: m.uploaded_at)
+      |> select([m], %{title: m.original_title, fallback: m.title, duration_seconds: m.duration_seconds})
+      |> limit(^limit)
       |> Repo.all()
       |> Enum.map(fn row -> %{title: row.title || row.fallback, duration_seconds: row.duration_seconds} end)
 
@@ -188,10 +191,21 @@ defmodule PinchflatWeb.Sources.SourceController do
     json(conn, %{
       total: length(results),
       changed: Enum.count(results, & &1.changed),
+      indexed_shown: length(indexed),
+      indexed_total: indexed_total,
+      indexed_cap: @preview_sample_max,
       samples: results
     })
   rescue
     _ -> json(conn, %{error: true})
+  end
+
+  # The tester's "load more" bumps this; clamp so a hand-crafted param can't pull the whole library.
+  defp preview_limit(raw) do
+    case parse_optional_integer(raw) do
+      n when is_integer(n) and n > 0 -> min(n, @preview_sample_max)
+      _ -> @preview_sample_limit
+    end
   end
 
   defp trace_step_json(step) do
