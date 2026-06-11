@@ -931,14 +931,9 @@
                         &#9656;
                       </span>
                       <div class="min-w-0 flex-1">
-                        <%!-- unchanged: just the original + a no-changes pill --%>
+                        <%!-- unchanged: just the original title, full width --%>
                         <template x-if="!s.changed">
-                          <div class="flex items-center gap-2">
-                            <span class="min-w-0 truncate font-mono text-xs text-bodydark1" x-text="s.title"></span>
-                            <span class="shrink-0 rounded bg-meta-4 px-1.5 py-0.5 text-[10px] text-bodydark2">
-                              no changes
-                            </span>
-                          </div>
+                          <div class="truncate font-mono text-xs text-bodydark1" x-text="s.title"></div>
                         </template>
                         <%!-- changed: a unified diff (removed=red, added=green) over the clean final result --%>
                         <template x-if="s.changed">
@@ -963,13 +958,12 @@
                             </div>
                           </div>
                         </template>
+                        <%!-- meta line: duration + (unchanged) pill live below so the title keeps the full row width --%>
+                        <div class="mt-1 flex items-center gap-2 text-[10px] leading-none text-bodydark2">
+                          <span x-show="s.duration != null" class="font-mono" x-text="fmtDur(s.duration)"></span>
+                          <span x-show="!s.changed" class="rounded bg-meta-4 px-1.5 py-0.5">no changes</span>
+                        </div>
                       </div>
-                      <span
-                        x-show="s.duration != null"
-                        class="mt-0.5 shrink-0 font-mono text-[10px] text-bodydark2"
-                        x-text="fmtDur(s.duration)"
-                      >
-                      </span>
                     </button>
 
                     <%!-- per-rule breakdown, expandable per title; inset darker panel so it nests under the header --%>
@@ -1039,7 +1033,7 @@
                         <div class="min-w-0 flex-1">
                           <div class="text-[10px] font-semibold uppercase tracking-wide text-bodydark2">Result</div>
                           <div
-                            class="truncate font-mono text-sm font-medium"
+                            class="truncate font-mono text-xs font-medium"
                             x-bind:class="s.changed ? 'text-meta-3' : 'text-bodydark2'"
                             x-text="s.final"
                           >
