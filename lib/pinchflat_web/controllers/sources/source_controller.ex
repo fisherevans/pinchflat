@@ -177,13 +177,17 @@ defmodule PinchflatWeb.Sources.SourceController do
 
     results =
       Enum.map(samples, fn sample ->
+        original = sample.title || ""
         %{output: output, trace: trace} = TitleCleanEngine.run(chain, sample)
 
         %{
-          title: sample.title,
+          title: original,
           duration: sample.duration_seconds,
           final: output,
-          changed: output != (sample.title || ""),
+          changed: output != original,
+          # Net original -> final diff for the compact (collapsed) row.
+          diff: TitleCleanEngine.diff_segments(original, output),
+          # Per-rule breakdown for the expandable detail.
           steps: Enum.map(trace, &trace_step_json/1)
         }
       end)

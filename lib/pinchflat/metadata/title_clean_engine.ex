@@ -130,7 +130,7 @@ defmodule Pinchflat.Metadata.TitleCleanEngine do
           | after: after_text,
             changed: changed,
             status: if(changed, do: :changed, else: :unchanged),
-            diff: if(changed, do: diff(before, after_text), else: [])
+            diff: if(changed, do: diff_segments(before, after_text), else: [])
         }
     end
   end
@@ -212,8 +212,11 @@ defmodule Pinchflat.Metadata.TitleCleanEngine do
 
   # --- inline diff ---
 
-  # Char-level diff as a list of %{op:, text:} segments, for the tester's inline highlight.
-  defp diff(before, after_text) do
+  @doc """
+  Char-level diff between two strings as a list of `%{op: "eq"|"del"|"ins", text:}` segments.
+  Used for the per-step trace and the aggregate (original -> final) diff in the tester.
+  """
+  def diff_segments(before, after_text) do
     before
     |> String.myers_difference(after_text)
     |> Enum.map(fn {op, text} -> %{op: Atom.to_string(op), text: text} end)

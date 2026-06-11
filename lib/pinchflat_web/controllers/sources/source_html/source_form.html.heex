@@ -491,6 +491,8 @@
               _uid: 0,
               _t: null,
               sampleLimit: 25,
+              filter: '',
+              expanded: {},
               preview: { total: 0, changed: 0, samples: [], indexed_shown: 0, indexed_total: 0, indexed_cap: 200 },
               presets: [
                 { key: 'strip_emojis', name: 'Strip emojis', desc: 'Remove emoji & pictographs' },
@@ -558,6 +560,19 @@
               scheduleRefresh() { clearTimeout(this._t); this._t = setTimeout(() => this.refresh(), 350); },
               loadMore() { this.sampleLimit = Math.min(this.sampleLimit + 25, this.preview.indexed_cap || 200); this.refresh(); },
               canLoadMore() { return this.preview.indexed_shown < this.preview.indexed_total && this.preview.indexed_shown < (this.preview.indexed_cap || 200); },
+              toggleExpand(i) { this.expanded[i] = !this.expanded[i]; },
+              matchesFilter(s) { const q = this.filter.trim().toLowerCase(); return !q || (s.title || '').toLowerCase().includes(q); },
+              visibleCount() { return (this.preview.samples || []).filter(s => this.matchesFilter(s)).length; },
+              fmtDur(sec) {
+                if (sec === null || sec === undefined || sec === '') return '';
+                sec = Math.round(Number(sec));
+                if (isNaN(sec)) return '';
+                const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+                const p = (n) => String(n).padStart(2, '0');
+                if (h > 0) return h + 'h' + p(m) + 'm' + p(s) + 's';
+                if (m > 0) return m + 'm' + p(s) + 's';
+                return s + 's';
+              },
               async refresh() {
                 if (!this.url) { this.loaded = true; return; }
                 const titles = JSON.stringify(this.testTitles.filter(t => t.title && t.title.trim() !== ''));
@@ -566,7 +581,7 @@
                   const res = await fetch(this.url + '?' + q.toString());
                   const d = await res.json();
                   if (d.error) { this.error = true; this.loaded = true; return; }
-                  this.error = false; this.preview = d; this.loaded = true;
+                  this.error = false; this.preview = d; this.expanded = {}; this.loaded = true;
                 } catch (e) { this.error = true; this.loaded = true; }
               }
             }
@@ -886,20 +901,68 @@
 
               <div x-show="error" x-cloak class="text-sm text-meta-1">Couldn't run the preview - check your rules.</div>
 
-              <div x-show="url && loaded && !error" class="flex max-h-[40rem] flex-col gap-3 overflow-y-auto">
+              <div x-show="url && loaded && !error" class="mb-2">
+                <input
+                  type="text"
+                  spellcheck="false"
+                  x-model="filter"
+                  placeholder="Filter loaded titles..."
+                  class="w-full rounded border border-stroke bg-transparent px-3 py-1.5 text-sm dark:border-strokedark dark:bg-meta-4"
+                />
+              </div>
+
+              <div x-show="url && loaded && !error" class="flex max-h-[40rem] flex-col gap-1.5 overflow-y-auto">
                 <template x-for="(s, si) in preview.samples" x-bind:key="si">
-                  <div class="shrink-0 overflow-hidden rounded-lg border border-stroke dark:border-strokedark">
-                    <div class="flex items-center gap-2 border-b border-stroke bg-stroke/30 px-3 py-2 dark:border-strokedark dark:bg-meta-4/30">
-                      <span class="min-w-0 flex-1 truncate font-mono text-xs text-bodydark2" x-text="s.title"></span>
+                  <div
+                    x-show="matchesFilter(s)"
+                    class="shrink-0 overflow-hidden rounded border border-stroke dark:border-strokedark"
+                  >
+                    <%!-- compact aggregate row: net original -> final diff; click to expand the per-rule breakdown --%>
+                    <button
+                      type="button"
+                      x-on:click="toggleExpand(si)"
+                      class="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-meta-4/20"
+                    >
+                      <span
+                        class="shrink-0 text-[10px] leading-none text-bodydark2 transition-transform"
+                        x-bind:class="expanded[si] ? 'rotate-90' : ''"
+                      >
+                        &#9656;
+                      </span>
+                      <span class="min-w-0 flex-1 truncate font-mono text-xs">
+                        <template x-if="!s.changed">
+                          <span class="italic text-bodydark2" x-text="s.title"></span>
+                        </template>
+                        <template x-if="s.changed">
+                          <span>
+                            <template x-for="(seg, j) in s.diff" x-bind:key="j">
+                              <span
+                                x-bind:class="{
+                                  'italic text-bodydark2': seg.op === 'eq',
+                                  'text-meta-1 line-through': seg.op === 'del',
+                                  'font-medium text-meta-3': seg.op === 'ins'
+                                }"
+                                x-text="seg.text"
+                              >
+                              </span>
+                            </template>
+                          </span>
+                        </template>
+                      </span>
                       <span
                         x-show="s.duration != null"
                         class="shrink-0 font-mono text-[10px] text-bodydark2"
-                        x-text="s.duration + 's'"
+                        x-text="fmtDur(s.duration)"
                       >
                       </span>
-                    </div>
+                    </button>
 
-                    <div class="divide-y divide-stroke/60 dark:divide-strokedark/60">
+                    <%!-- per-rule breakdown, expandable per title --%>
+                    <div
+                      x-show="expanded[si]"
+                      x-cloak
+                      class="divide-y divide-stroke/60 border-t border-stroke dark:divide-strokedark/60 dark:border-strokedark"
+                    >
                       <template x-for="(st, sti) in s.steps" x-bind:key="sti">
                         <div class="flex items-start gap-2.5 px-3 py-2">
                           <span
@@ -971,13 +1034,16 @@
                     </div>
                   </div>
                 </template>
+                <p x-show="visibleCount() === 0" x-cloak class="py-6 text-center text-xs text-bodydark2">
+                  No loaded titles match that filter.
+                </p>
               </div>
 
               <div
                 x-show="url && loaded && !error"
                 class="mt-3 flex items-center justify-between gap-2 text-xs text-bodydark2"
               >
-                <span x-text="'Showing ' + preview.indexed_shown + ' of ' + preview.indexed_total + ' indexed titles'">
+                <span x-text="(filter.trim() ? visibleCount() + ' matching / ' : '') + 'Showing ' + preview.indexed_shown + ' of ' + preview.indexed_total + ' indexed titles'">
                 </span>
                 <button
                   type="button"
