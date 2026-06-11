@@ -911,57 +911,73 @@
                 />
               </div>
 
-              <div x-show="url && loaded && !error" class="flex max-h-[40rem] flex-col gap-1.5 overflow-y-auto">
+              <div x-show="url && loaded && !error" class="flex max-h-[40rem] flex-col gap-2 overflow-y-auto">
                 <template x-for="(s, si) in preview.samples" x-bind:key="si">
                   <div
                     x-show="matchesFilter(s)"
-                    class="shrink-0 overflow-hidden rounded border border-stroke dark:border-strokedark"
+                    class="shrink-0 overflow-hidden rounded-md border transition-colors"
+                    x-bind:class="expanded[si] ? 'border-primary/60 bg-meta-4/10' : 'border-stroke hover:border-bodydark2/40 dark:border-strokedark'"
                   >
-                    <%!-- compact aggregate row: net original -> final diff; click to expand the per-rule breakdown --%>
+                    <%!-- collapsed summary: original (cuts struck) over the final result; expand for the per-rule breakdown --%>
                     <button
                       type="button"
                       x-on:click="toggleExpand(si)"
-                      class="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-meta-4/20"
+                      class="flex w-full items-start gap-2 px-2.5 py-2 text-left hover:bg-meta-4/10"
                     >
                       <span
-                        class="shrink-0 text-[10px] leading-none text-bodydark2 transition-transform"
+                        class="mt-0.5 shrink-0 text-[10px] leading-none text-bodydark2 transition-transform"
                         x-bind:class="expanded[si] ? 'rotate-90' : ''"
                       >
                         &#9656;
                       </span>
-                      <span class="min-w-0 flex-1 truncate font-mono text-xs">
+                      <div class="min-w-0 flex-1">
+                        <%!-- unchanged: just the original + a no-changes pill --%>
                         <template x-if="!s.changed">
-                          <span class="italic text-bodydark2" x-text="s.title"></span>
+                          <div class="flex items-center gap-2">
+                            <span class="min-w-0 truncate font-mono text-xs text-bodydark1" x-text="s.title"></span>
+                            <span class="shrink-0 rounded bg-meta-4 px-1.5 py-0.5 text-[10px] text-bodydark2">
+                              no changes
+                            </span>
+                          </div>
                         </template>
+                        <%!-- changed: original (deletions struck red) then the final result (additions green) --%>
                         <template x-if="s.changed">
-                          <span>
-                            <template x-for="(seg, j) in s.diff" x-bind:key="j">
-                              <span
-                                x-bind:class="{
-                                  'italic text-bodydark2': seg.op === 'eq',
-                                  'text-meta-1 line-through': seg.op === 'del',
-                                  'font-medium text-meta-3': seg.op === 'ins'
-                                }"
-                                x-text="seg.text"
-                              >
-                              </span>
-                            </template>
-                          </span>
+                          <div class="space-y-0.5">
+                            <div class="truncate font-mono text-xs text-bodydark2">
+                              <template x-for="(seg, j) in s.diff.filter(d => d.op !== 'ins')" x-bind:key="j">
+                                <span
+                                  x-bind:class="seg.op === 'del' ? 'text-meta-1 line-through' : ''"
+                                  x-text="seg.text"
+                                >
+                                </span>
+                              </template>
+                            </div>
+                            <div class="truncate font-mono text-xs">
+                              <span class="text-bodydark2">&rarr;&nbsp;</span>
+                              <template x-for="(seg, j) in s.diff.filter(d => d.op !== 'del')" x-bind:key="j">
+                                <span
+                                  x-bind:class="seg.op === 'ins' ? 'font-medium text-meta-3' : 'text-bodydark1'"
+                                  x-text="seg.text"
+                                >
+                                </span>
+                              </template>
+                            </div>
+                          </div>
                         </template>
-                      </span>
+                      </div>
                       <span
                         x-show="s.duration != null"
-                        class="shrink-0 font-mono text-[10px] text-bodydark2"
+                        class="mt-0.5 shrink-0 font-mono text-[10px] text-bodydark2"
                         x-text="fmtDur(s.duration)"
                       >
                       </span>
                     </button>
 
-                    <%!-- per-rule breakdown, expandable per title --%>
+                    <%!-- per-rule breakdown, expandable per title; inset darker panel so it nests under the header --%>
                     <div
                       x-show="expanded[si]"
                       x-cloak
-                      class="divide-y divide-stroke/60 border-t border-stroke dark:divide-strokedark/60 dark:border-strokedark"
+                      class="divide-y divide-stroke/60 border-t border-strokedark bg-black/20 dark:divide-strokedark/60"
                     >
                       <template x-for="(st, sti) in s.steps" x-bind:key="sti">
                         <div class="flex items-start gap-2.5 px-3 py-2">
