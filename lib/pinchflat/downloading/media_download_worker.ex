@@ -149,6 +149,14 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     # immediately as part of job failure logic
     non_retryable_errors = [
       "Video unavailable",
+      # YouTube returns this wording for permanently-dead videos and it does NOT
+      # contain "Video unavailable", so without this entry every dead video burns
+      # its full max_attempts retry ladder. It used to also return the
+      # "Playback ... disabled by the video owner" wording (which does match the
+      # entry above) often enough to terminate most jobs early; that stopped on
+      # 2026-09-02 and the benign failure floor jumped ~6x overnight.
+      # See fisherevans/nottingham-cloud#232.
+      "This video is not available",
       "Sign in to confirm",
       "This video is available to this channel's members"
     ]
