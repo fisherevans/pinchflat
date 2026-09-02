@@ -131,6 +131,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     # immediately as part of job failure logic
     non_retryable_errors = [
       "Video unavailable",
+      "This video is not available",
       "Sign in to confirm",
       "This video is available to this channel's members"
     ]
