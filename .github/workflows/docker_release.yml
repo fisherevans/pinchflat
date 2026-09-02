@@ -34,7 +34,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       dev_arch: 'linux/amd64'
-      release_arch: 'linux/amd64,linux/arm64'
+      # amd64 only. This fork is deployed to exactly one host (arr-matey, an x86_64
+      # Debian VM) and nothing consumes an arm64 image. Building arm64 means emulating
+      # it under QEMU, where the `yt-dlp -U` step dies with exit 132 (SIGILL) — it is a
+      # PyInstaller binary that QEMU cannot execute faithfully. Restore the arm64 target
+      # only if something actually needs it, and expect to solve that crash first.
+      release_arch: 'linux/amd64'
     permissions:
       contents: read
       packages: write
