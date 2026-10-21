@@ -88,4 +88,5 @@ Runtime is driven entirely by env vars (`config/runtime.exs`). Key ones: `MEDIA_
 
 - Version is date-based (`version.bump` alias runs `tooling/version_bump.sh`); don't hand-edit `version` in `mix.exs`.
 - `mix ecto.migrate`/`rollback` regenerate `priv/repo/erd.png` via `yarn run create-erd` (only outside `MIX_ENV`).
-- Branch off `master`; PRs target `master`.
+- **Releases are cut from `fork-mvp`, not `master`.** `fork-mvp` is this fork's release line: it carries the fork features (MediaOrganizer, title cleaning) and the working Docker build, and the deployed `vYYYY.MMDD.N` tags live on it. `master` is the GitHub default branch but tracks upstream plus a few cherry-picks; it lacks the fork features, its `selfhosted.Dockerfile` ffmpeg URL 404s, and its `docker_release.yml` does not build on tag push. A tag cut on `master` either fails to build or would regress the deployed app.
+- Branch off `fork-mvp`; PRs for anything that should ship target `fork-mvp`. Cut a release by bumping `version` in `mix.exs` on `fork-mvp`, then pushing a `v<version>` tag there; the tag push builds `ghcr.io/fisherevans/pinchflat:<tag>`. The deploy pin lives in nottingham-cloud `containers/arr-matey/docker-compose.yaml`.
