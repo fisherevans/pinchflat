@@ -88,5 +88,15 @@ Runtime is driven entirely by env vars (`config/runtime.exs`). Key ones: `MEDIA_
 
 - Version is date-based (`version.bump` alias runs `tooling/version_bump.sh`); don't hand-edit `version` in `mix.exs`.
 - `mix ecto.migrate`/`rollback` regenerate `priv/repo/erd.png` via `yarn run create-erd` (only outside `MIX_ENV`).
-- **Releases are cut from `fork-mvp`, not `master`.** `fork-mvp` is this fork's release line: it carries the fork features (MediaOrganizer, title cleaning) and the working Docker build, and the deployed `vYYYY.MMDD.N` tags live on it. `master` is the GitHub default branch but tracks upstream plus a few cherry-picks; it lacks the fork features, its `selfhosted.Dockerfile` ffmpeg URL 404s, and its `docker_release.yml` does not build on tag push. A tag cut on `master` either fails to build or would regress the deployed app.
+- **`fork-mvp` is the default branch and the release line** (default since 2026-10-22). It carries the fork features (MediaOrganizer, title cleaning) and the working Docker build, and the deployed `vYYYY.MMDD.N` tags live on it. `master` is legacy: upstream plus a few cherry-picks, without the fork features. Do not cut tags there.
 - Branch off `fork-mvp`; PRs for anything that should ship target `fork-mvp`. Cut a release by bumping `version` in `mix.exs` on `fork-mvp`, then pushing a `v<version>` tag there; the tag push builds `ghcr.io/fisherevans/pinchflat:<tag>`. The deploy pin lives in nottingham-cloud `containers/arr-matey/docker-compose.yaml`.
+
+## How updates flow (nottingham-cloud#800)
+
+Nothing here deploys on its own. The pin in nottingham-cloud `containers/arr-matey/docker-compose.yaml` is the gate.
+
+- **Upstream** - `.github/workflows/upstream_sync.yml` (Mondays) merges `kieraneglin/pinchflat` master into `upstream-sync/<sha>` off `fork-mvp`, runs the lint/test gate, and opens a PR. Conflicts, a failing gate, or an upstream workflow-file change (GITHUB_TOKEN cannot push those) open an `upstream-sync` issue instead. If the repo does not allow Actions to create PRs, it opens an issue with the compare link.
+- **Dependencies** - `.github/dependabot.yml`: grouped weekly PRs for mix, assets npm, and the Dockerfile `FROM` lines; monthly for root dev tooling and Actions. Security updates arrive as their own PRs. Keep the `FROM` lines literal or Dependabot cannot read them.
+- **Base image, Debian, yt-dlp, Deno, apprise** - `docker_release.yml` rebuilds `:dev` from `fork-mvp` every Saturday, uncached with a fresh base pull (the runtime stage runs `apt-get upgrade`; yt-dlp, Deno and apprise are fetched at their latest). A version tag is never rebuilt. The running container also self-updates yt-dlp at boot (`YtDlp.UpdateWorker`).
+- **Shipping any of it** - merge to `fork-mvp`, bump `version` in `mix.exs`, push the `v<version>` tag, bump the nottingham-cloud pin and deploy. nottingham-cloud's weekly freshness check flags a pin behind the newest release tag and open Dependabot PRs.
+- Record deliberate changes in `changelog/`.
