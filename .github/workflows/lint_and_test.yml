@@ -3,11 +3,18 @@ name: Perform linting and run tests
 on:
   push:
     branches:
-      - master
+      - fork-mvp
   pull_request:
     branches:
-      - master
+      - fork-mvp
   workflow_dispatch:
+  # Called by upstream_sync.yml against the sync branch. PRs opened with GITHUB_TOKEN do not
+  # trigger pull_request runs, so the sync workflow runs the gate itself before opening one.
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
 
 jobs:
   build-and-test:
@@ -21,6 +28,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || '' }}
 
       - name: Pull prebuilt images
         run: docker compose pull

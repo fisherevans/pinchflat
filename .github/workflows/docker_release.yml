@@ -19,7 +19,7 @@ on:
 
   push:
     branches:
-      - master
+      - fork-mvp
     # Fork release line: pushing a vYYYY.M.D tag publishes a versioned multi-arch image
     # to GHCR. Tag pushes run the workflow from the tagged commit (not the default branch),
     # which is why this works without touching master.
@@ -28,6 +28,13 @@ on:
   release:
     types:
       - published
+  # Weekly uncached rebuild of fork-mvp (nottingham-cloud#800). Lands base-image, Debian,
+  # yt-dlp, Deno and apprise updates with no code change. Publishes only the rolling :dev
+  # tag; a version tag is never rebuilt, so the pinned deploy cannot move. Picking the fresh
+  # bits up for real is a patch release plus a pin bump. See nottingham-cloud
+  # agent/app-contract.md#the-weekly-rebuild.
+  schedule:
+    - cron: '55 9 * * 6'
 
 jobs:
   build_and_push_docker:
@@ -36,7 +43,7 @@ jobs:
       dev_arch: 'linux/amd64'
       # amd64 only. This fork is deployed to exactly one host (arr-matey, an x86_64
       # Debian VM) and nothing consumes an arm64 image. Building arm64 means emulating
-      # it under QEMU, where the `yt-dlp -U` step dies with exit 132 (SIGILL) — it is a
+      # it under QEMU, where the `yt-dlp -U` step dies with exit 132 (SIGILL) - it is a
       # PyInstaller binary that QEMU cannot execute faithfully. Restore the arm64 target
       # only if something actually needs it, and expect to solve that crash first.
       release_arch: 'linux/amd64'
@@ -56,7 +63,7 @@ jobs:
             ghcr.io/${{ github.repository }}
           tags: |
             type=ref,event=tag
-            type=raw,value=dev,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+            type=raw,value=dev,enable=${{ (github.event_name == 'push' && github.ref == 'refs/heads/fork-mvp') || github.event_name == 'schedule' }}
             type=raw,value=${{ inputs.docker_tags }},enable=${{ github.event_name == 'workflow_dispatch' }}
           flavor: |
             latest=auto
@@ -83,6 +90,12 @@ jobs:
           # otherwise.
           platforms: ${{ (github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')) && env.release_arch || (github.event.inputs.platforms || env.dev_arch) }}
           push: true
+          # Scheduled and manual rebuilds skip the layer cache and re-pull the bases. With
+          # cache-from a `curl .../latest/download/yt-dlp_linux` or `apt-get upgrade` layer is
+          # a cache hit whenever the Dockerfile and base digest are unchanged, so a cached
+          # rebuild would republish the stale binary it was meant to replace.
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
