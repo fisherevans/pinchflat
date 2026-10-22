@@ -1,10 +1,5 @@
-ARG ELIXIR_VERSION=1.18.4
-ARG OTP_VERSION=27.2.4
-ARG DEBIAN_VERSION=bookworm-20250428-slim
-
-ARG DEV_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
-
-FROM ${DEV_IMAGE}
+# Literal FROM so Dependabot can bump it; keep in step with the builder in selfhosted.Dockerfile.
+FROM hexpm/elixir:1.18.4-erlang-27.3.4.16-debian-trixie-20260824-slim
 
 ARG TARGETPLATFORM
 RUN echo "Building for ${TARGETPLATFORM:?}"
@@ -25,7 +20,7 @@ RUN export FFMPEG_DOWNLOAD=$(case ${TARGETPLATFORM:-linux/amd64} in \
     tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/bin/ "ffprobe"
 
 # Install nodejs and Yarn
-RUN curl -sL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh && \
+RUN curl -sL https://deb.nodesource.com/setup_22.x -o nodesource_setup.sh && \
   bash nodesource_setup.sh && \
   apt-get install -y nodejs && \
   npm install -g yarn && \

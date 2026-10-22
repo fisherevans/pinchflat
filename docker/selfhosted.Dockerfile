@@ -1,13 +1,11 @@
 # Find eligible builder and runner images on Docker Hub. We use Ubuntu/Debian
 # instead of Alpine to avoid DNS resolution issues in production.
-ARG ELIXIR_VERSION=1.18.4
-ARG OTP_VERSION=27.2.4
-ARG DEBIAN_VERSION=bookworm-20250428-slim
-
-ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
-ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
-
-FROM ${BUILDER_IMAGE} AS builder
+#
+# Base images are written as literal FROM lines (not ARG-composed) so Dependabot can read and
+# bump them. hexpm stopped publishing Elixir 1.18.4 images after the 2026-08-24 Debian snapshot;
+# newer OTP 27 patches ship only with Elixir 1.19+, which needs type-checker fixes in this
+# codebase first. The runtime base is plain Debian, so it tracks the newest snapshot on its own.
+FROM hexpm/elixir:1.18.4-erlang-27.3.4.16-debian-trixie-20260824-slim AS builder
 
 ARG TARGETPLATFORM
 RUN echo "Building for ${TARGETPLATFORM:?}"
@@ -20,7 +18,7 @@ RUN apt-get update -y && \
       git \
       curl && \
     # Node.js and Yarn
-    curl -sL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh && \
+    curl -sL https://deb.nodesource.com/setup_22.x -o nodesource_setup.sh && \
     bash nodesource_setup.sh && \
     apt-get install -y nodejs && \
     npm install -g yarn && \
@@ -76,7 +74,7 @@ RUN mix release
 
 ## -- Release Stage --
 
-FROM ${RUNNER_IMAGE}
+FROM debian:trixie-20261020-slim
 
 ARG TARGETPLATFORM
 ARG PORT=8945
@@ -85,11 +83,14 @@ COPY --from=builder ./usr/local/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder ./usr/local/bin/ffprobe /usr/bin/ffprobe
 
 RUN apt-get update -y && \
+    # Pull in Debian security updates published after the base snapshot; the weekly uncached
+    # rebuild relies on this to land patches without a base-tag bump.
+    apt-get upgrade -y && \
     # System packages
     apt-get install -y \
       libstdc++6 \
       openssl \
-      libncurses5 \
+      libncurses6 \
       locales \
       ca-certificates \
       python3-mutagen \
