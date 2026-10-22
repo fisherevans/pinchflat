@@ -17,7 +17,11 @@
       "Config.CSP",
       "XSS.ContentType",
       "Traversal.SendFile",
-      "Traversal.SendDownload"
+      "Traversal.SendDownload",
+      # Added in sobelow 0.16. Flags `check_origin: false` in config.exs, which upstream sets
+      # on purpose: a self-hosted app is reached on whatever host/IP the user picks, so a fixed
+      # origin list would break LiveView for most installs.
+      "Config.CSWH"
     ],
   ignore_files: [],
   version: false
