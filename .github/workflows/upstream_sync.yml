@@ -1,0 +1,176 @@
+name: Upstream Sync
+
+# Weekly check for new commits on kieraneglin/pinchflat master (nottingham-cloud#800).
+#
+# When upstream has moved, merge it into a fresh `upstream-sync/<sha>` branch cut from
+# fork-mvp, run the full lint/test gate on that branch, and open a PR into fork-mvp. A merge
+# conflict, a push the token is not allowed to make, or a failing gate opens an issue instead.
+# Nothing here ever pushes to fork-mvp; merging the PR (and cutting a release) stays a human
+# or agent decision.
+#
+# One branch per upstream head: if `upstream-sync/<sha>` already exists the run does nothing,
+# so a pending PR is not duplicated every week. Issues are deduplicated by title.
+
+on:
+  schedule:
+    - cron: '20 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: kieraneglin/pinchflat
+  UPSTREAM_BRANCH: master
+  BASE_BRANCH: fork-mvp
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      state: ${{ steps.sync.outputs.state }}
+      branch: ${{ steps.sync.outputs.branch }}
+      sha: ${{ steps.sync.outputs.sha }}
+      count: ${{ steps.sync.outputs.count }}
+      detail: ${{ steps.sync.outputs.detail }}
+    steps:
+      - name: Checkout fork-mvp
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Merge upstream into a sync branch
+        id: sync
+        run: |
+          set -u
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --no-tags upstream "$UPSTREAM_BRANCH"
+
+          count=$(git rev-list --count "HEAD..upstream/${UPSTREAM_BRANCH}")
+          sha=$(git rev-parse --short=12 "upstream/${UPSTREAM_BRANCH}")
+          branch="upstream-sync/${sha}"
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+
+          if [ "$count" -eq 0 ]; then
+            echo "fork-mvp already contains upstream ${sha}"
+            echo "state=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "${branch} already exists; its PR or issue is still pending"
+            echo "state=exists" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git switch -c "$branch"
+          if ! git merge --no-ff --no-edit -m "Merge upstream ${UPSTREAM_REPO}@${sha} into ${BASE_BRANCH}" "upstream/${UPSTREAM_BRANCH}"; then
+            files=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
+            git merge --abort
+            echo "state=conflict" >> "$GITHUB_OUTPUT"
+            echo "detail=Conflicting files: ${files}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # GITHUB_TOKEN cannot push commits that touch .github/workflows, so an upstream
+          # workflow change surfaces here rather than as a silent no-op.
+          if ! git push origin "$branch" 2> push.err; then
+            cat push.err
+            echo "state=push_failed" >> "$GITHUB_OUTPUT"
+            echo "detail=$(tr '\n' ' ' < push.err | cut -c1-400)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "state=merged" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: merge
+    if: needs.merge.outputs.state == 'merged'
+    uses: ./.github/workflows/lint_and_test.yml
+    with:
+      ref: ${{ needs.merge.outputs.branch }}
+
+  report:
+    needs: [merge, test]
+    if: always() && (needs.merge.outputs.state == 'merged' || needs.merge.outputs.state == 'conflict' || needs.merge.outputs.state == 'push_failed' || needs.merge.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      STATE: ${{ needs.merge.outputs.state }}
+      MERGE_RESULT: ${{ needs.merge.result }}
+      TEST_RESULT: ${{ needs.test.result }}
+      BRANCH: ${{ needs.merge.outputs.branch }}
+      SHA: ${{ needs.merge.outputs.sha }}
+      COUNT: ${{ needs.merge.outputs.count }}
+      DETAIL: ${{ needs.merge.outputs.detail }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open a PR or an issue
+        run: |
+          set -u
+          gh label create upstream-sync --color 5319e7 --description 'Automated upstream sync (upstream_sync.yml)' >/dev/null 2>&1 || true
+
+          open_issue() {
+            title="$1"; body="$2"
+            if gh issue list --state open --label upstream-sync --search "in:title \"${title}\"" --json title --jq '.[].title' | grep -Fxq "$title"; then
+              echo "Issue already open: ${title}"
+              return 0
+            fi
+            gh issue create --title "$title" --label upstream-sync --body "$body"
+          }
+
+          if [ "$STATE" = "merged" ] && [ "$TEST_RESULT" = "success" ]; then
+            body=$(printf '%s\n' \
+              "Upstream \`${UPSTREAM_REPO}@${UPSTREAM_BRANCH}\` has ${COUNT} commit(s) not on \`${BASE_BRANCH}\` (head \`${SHA}\`)." \
+              "" \
+              "\`${BRANCH}\` is \`${BASE_BRANCH}\` with upstream merged in. The lint/test gate passed on it: ${RUN_URL}" \
+              "" \
+              "Review the upstream changes, merge, then cut a release (bump \`version\` in mix.exs, push a \`v<version>\` tag) and bump the pin in nottingham-cloud. Opened by upstream_sync.yml; nothing deploys on its own.")
+            if gh pr create --base "$BASE_BRANCH" --head "$BRANCH" --label upstream-sync \
+                --title "Sync upstream ${UPSTREAM_REPO}@${SHA}" --body "$body"; then
+              exit 0
+            fi
+            # Repo setting "Allow GitHub Actions to create and approve pull requests" is off.
+            open_issue "Upstream sync ready: ${SHA}" "$(printf '%s\n' "$body" "" \
+              "The workflow could not open the PR itself (Actions may not create PRs in this repo). Open it from: https://github.com/${GH_REPO}/compare/${BASE_BRANCH}...${BRANCH}")"
+            exit 0
+          fi
+
+          case "$STATE" in
+            merged)
+              open_issue "Upstream sync failed checks: ${SHA}" "$(printf '%s\n' \
+                "Upstream \`${UPSTREAM_REPO}@${SHA}\` merged cleanly into \`${BRANCH}\`, but the lint/test gate did not pass (${TEST_RESULT})." \
+                "" "Run: ${RUN_URL}" \
+                "Branch: https://github.com/${GH_REPO}/tree/${BRANCH}" \
+                "" "Fix on the branch and open the PR into \`${BASE_BRANCH}\` by hand. Delete the branch to have the next weekly run retry from scratch.")"
+              ;;
+            conflict)
+              open_issue "Upstream sync conflict: ${SHA}" "$(printf '%s\n' \
+                "Merging upstream \`${UPSTREAM_REPO}@${SHA}\` (${COUNT} commit(s)) into \`${BASE_BRANCH}\` conflicts." \
+                "" "${DETAIL}" "" "Run: ${RUN_URL}" \
+                "" "Resolve by hand: branch off \`${BASE_BRANCH}\`, \`git merge upstream/${UPSTREAM_BRANCH}\`, fix, open a PR.")"
+              ;;
+            push_failed)
+              open_issue "Upstream sync could not push: ${SHA}" "$(printf '%s\n' \
+                "Upstream \`${UPSTREAM_REPO}@${SHA}\` merged cleanly, but the sync branch could not be pushed. The usual cause is an upstream change under \`.github/workflows/\`, which GITHUB_TOKEN may not push." \
+                "" "\`${DETAIL}\`" "" "Run: ${RUN_URL}" \
+                "" "Do the merge by hand on a branch off \`${BASE_BRANCH}\` and open a PR.")"
+              ;;
+            *)
+              open_issue "Upstream sync workflow failed" "The upstream sync job itself failed (${MERGE_RESULT}). Run: ${RUN_URL}"
+              ;;
+          esac

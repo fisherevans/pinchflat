@@ -1,0 +1,68 @@
+# Dependabot for the fork's release line (nottingham-cloud#800).
+#
+# Weekly, one grouped PR per ecosystem so the noise stays at a handful of PRs a week at
+# most. Security updates (enabled in repo settings) are separate, immediate PRs and are not
+# held back by the schedule. Everything targets fork-mvp; a merged PR still ships only when
+# someone cuts a release and bumps the nottingham-cloud pin.
+version: 2
+updates:
+  - package-ecosystem: mix
+    directory: /
+    target-branch: fork-mvp
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+    open-pull-requests-limit: 5
+    groups:
+      mix-minor-patch:
+        update-types: [minor, patch]
+      mix-major:
+        update-types: [major]
+
+  # In-app JS (alpinejs); this is what ships in the image.
+  - package-ecosystem: npm
+    directory: /assets
+    target-branch: fork-mvp
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+    open-pull-requests-limit: 2
+    groups:
+      assets:
+        patterns: ['*']
+
+  # Root package.json is the dev-only prettier + sqleton toolchain, not in the image.
+  - package-ecosystem: npm
+    directory: /
+    target-branch: fork-mvp
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      dev-tooling:
+        patterns: ['*']
+
+  # Literal FROM lines in docker/selfhosted.Dockerfile and docker/dev.Dockerfile.
+  - package-ecosystem: docker
+    directory: /docker
+    target-branch: fork-mvp
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+    open-pull-requests-limit: 3
+    groups:
+      base-images:
+        patterns: ['*']
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: fork-mvp
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ['*']
